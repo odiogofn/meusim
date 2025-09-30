@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Sistema de Clientes</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    nav { margin-bottom: 20px; }
+    nav button { margin-right: 10px; padding: 6px 12px; cursor: pointer; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f4f4f4; }
+    select { padding: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Sistema de Clientes</h1>
+
+  <nav>
+    <button onclick="showTab('consultar')">Consultar</button>
+    <button onclick="showTab('configuracao')">Configuração</button>
+  </nav>
+
+  <!-- Aba Consultar -->
+  <div id="consultar" class="tab active">
+    <h2>Consulta de Municípios Ativos</h2>
+    <button onclick="consultar()">Executar Consulta</button>
+    <table>
+      <thead>
+        <tr>
+          <th>Mês</th>
+          <th>Município</th>
+          <th>Unidade Orçamentária</th>
+          <th>Data de Entrega</th>
+        </tr>
+      </thead>
+      <tbody id="consultaTable">
+        <!-- Preenchido via JS -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Aba Configuração -->
+  <div id="configuracao" class="tab">
+    <h2>Configuração de Clientes</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Entidade</th>
+          <th>Código TCE</th>
+          <th>Ativo</th>
+        </tr>
+      </thead>
+      <tbody id="clientesTable"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // ⚡ Configuração Supabase
+    const SUPABASE_URL = "https://oxowmudtpuczbuzjpddf.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94b3dtdWR0cHVjemJ1empwZGRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMzM3MTEsImV4cCI6MjA3NDgwOTcxMX0.lLA70RaONhuq0vOUuy17V_isNRyrdLyMnkgVtIsRH4E";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Alternar abas
+    function showTab(tabId) {
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    // Carregar clientes na aba Configuração
+    async function carregarClientes() {
+      const tbody = document.getElementById("clientesTable");
+      tbody.innerHTML = "<tr><td colspan='3'>Carregando...</td></tr>";
+
+      const { data, error } = await supabase
+        .from("clientes")
+        .select("id, entidade, cod_tce, ativo")
+        .order("cod_tce", { ascending: true });
+
+      if (error) {
+        console.error("Erro ao carregar clientes:", error);
+        tbody.innerHTML = "<tr><td colspan='3'>Erro ao carregar clientes</td></tr>";
+        return;
+      }
+
+      tbody.innerHTML = "";
+      data.forEach(cliente => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${cliente.entidade}</td>
+          <td>${cliente.cod_tce}</td>
+          <td>
+            <select onchange="atualizarAtivo(${cliente.id}, this.value)">
+              <option value="sim" ${cliente.ativo === "sim" ? "selected" : ""}>sim</option>
+              <option value="nao" ${cliente.ativo === "nao" ? "selected" : ""}>nao</option>
+            </select>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Atualizar campo ativo
+    async function atualizarAtivo(id, novoValor) {
+      const { error } = await supabase
+        .from("clientes")
+        .update({ ativo: novoValor })
+        .eq("id", id);
+
+      if (error) {
+        alert("❌ Erro ao atualizar: " + error.message);
+      } else {
+        console.log(`✅ Cliente ${id} atualizado para ${novoValor}`);
+      }
+    }
+
+    // Consulta de municípios ativos
+    async function consultar() {
+      const tbody = document.getElementById("consultaTable");
+      tbody.innerHTML = "<tr><td colspan='4'>Carregando...</td></tr>";
+
+      const { data: clientes, error } = await supabase
+        .from("clientes")
+        .select("entidade, cod_tce")
+        .eq("ativo", "sim")
+        .order("cod_tce", { ascending: true });
+
+      if (error) {
+        tbody.innerHTML = "<tr><td colspan='4'>Erro ao buscar clientes ativos</td></tr>";
+        return;
+      }
+
+      tbody.innerHTML = "";
+
+      for (let i = 0; i < clientes.length; i++) {
+        const cliente = clientes[i];
+        const url = `https://municipios-transparencia.tce.ce.gov.br/index.php/municipios/prestacao/mun/${cliente.cod_tce}/versao/2025`;
+
+        try {
+          //⚠️ Precisa de proxy no backend por causa de CORS
+          const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
+          const html = await res.text();
+
+          // Extrair com regex
+          const municipioMatch = html.match(/<h1><a[^>]*>(.*?)<\/a><\/h1>/);
+          const municipio = municipioMatch ? municipioMatch[1] : cliente.entidade;
+
+          const regex = /<tr>\s*<td[^>]*>(.*?)<\/td>.*?<td[^>]*>.*?<\/td>.*?<td[^>]*>(.*?)<\/td>.*?<td[^>]*>.*?<\/td>.*?<td[^>]*>(.*?)<\/td>/g;
+          let match;
+          while ((match = regex.exec(html)) !== null) {
+            const mes = match[1].trim();
+            const dataEntrega = match[2].trim();
+            const unidade = match[3].trim();
+
+            if (mes && unidade && dataEntrega) {
+              const tr = document.createElement("tr");
+              tr.innerHTML = `
+                <td>${mes}</td>
+                <td>${municipio}</td>
+                <td>${unidade}</td>
+                <td>${dataEntrega}</td>
+              `;
+              tbody.appendChild(tr);
+            }
+          }
+        } catch (err) {
+          console.error("Erro consulta:", err);
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td colspan="4">Erro ao buscar dados de ${cliente.entidade}</td>`;
+          tbody.appendChild(tr);
+        }
+
+        // Delay de 2 segundos entre consultas
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    // Carregar clientes no início
+    carregarClientes();
+  </script>
+</body>
+</html>
