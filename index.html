@@ -14,6 +14,7 @@
     .progress > div{height:100%;width:0;background:linear-gradient(90deg,#4caf50,#2196f3);transition:width .4s}
     table{width:100%;border-collapse:collapse;margin-top:10px}
     th,td{border:1px solid #ddd;padding:6px;text-align:left}
+    label { margin-right: 8px; }
   </style>
 </head>
 <body>
@@ -32,10 +33,10 @@
     <label>Mês:
       <select id="mes">
         <option value="">Todos</option>
-        <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>
-        <option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option>
-        <option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option>
-        <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+        <option value="Janeiro">Janeiro</option><option value="Fevereiro">Fevereiro</option><option value="Março">Março</option>
+        <option value="Abril">Abril</option><option value="Maio">Maio</option><option value="Junho">Junho</option>
+        <option value="Julho">Julho</option><option value="Agosto">Agosto</option><option value="Setembro">Setembro</option>
+        <option value="Outubro">Outubro</option><option value="Novembro">Novembro</option><option value="Dezembro">Dezembro</option>
       </select>
     </label>
     <label>Data de Entrega:
@@ -43,14 +44,14 @@
     </label>
 
     <div style="margin-top:8px">
-      <button id="btnExtrair">Extrair (scrape)</button>
+      <button id="btnExtrair">Extrair (server)</button>
       <button id="btnSalvar">Salvar Extração</button>
       <button id="btnUltima">Visualizar Última Extração</button>
     </div>
 
     <div class="progress"><div id="bar"></div></div>
 
-    <h3>Resultados (extraídos)</h3>
+    <h3>Resultados</h3>
     <table id="tblResultados">
       <thead><tr><th>Mês</th><th>Município</th><th>Unidade Orçamentária</th><th>Data de Entrega</th></tr></thead>
       <tbody></tbody>
@@ -67,153 +68,141 @@
     </table>
   </div>
 
-  <script>
-    // popular anos
-    const anoSel = document.getElementById('ano');
-    for (let y = 2025; y >= 2000; y--) { const o = document.createElement('option'); o.value = y; o.textContent = y; anoSel.appendChild(o); }
+<script>
+  // popular anos
+  const anoSel = document.getElementById('ano');
+  for (let y=2025; y>=2000; y--) { const o=document.createElement('option'); o.value=y; o.textContent=y; anoSel.appendChild(o); }
 
-    // tabs
-    document.getElementById('tab-consulta').onclick = () => { show('consulta'); };
-    document.getElementById('tab-config').onclick = () => { show('config'); loadClients(); };
-    function show(id){ document.querySelectorAll('.panel').forEach(p => p.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+  // tabs
+  document.getElementById('tab-consulta').onclick = () => show('consulta');
+  document.getElementById('tab-config').onclick = () => { show('config'); loadClients(); };
+  function show(id){ document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); }
 
-    // helpers
-    function setProgress(pct){ document.getElementById('bar').style.width = pct + '%'; }
-    function clearResultados(){ document.querySelector('#tblResultados tbody').innerHTML = ''; }
+  function setProgress(p){ document.getElementById('bar').style.width = p + '%'; }
 
-    let lastExtract = []; // guarda a última extração em memória
+  let lastExtract = [];
 
-    // --- Extrair (chama /api/extrair) ---
-    document.getElementById('btnExtrair').addEventListener('click', async () => {
-      clearResultados();
-      setProgress(5);
+  // Extrair (server-side scraping)
+  document.getElementById('btnExtrair').addEventListener('click', async () => {
+    try {
+      setProgress(10);
       const ano = document.getElementById('ano').value;
-      const mes = document.getElementById('mes').value;
-      const dataEntrega = document.getElementById('dataEntrega').value;
+      const mes = document.getElementById('mes').value; // 'Janeiro' or ''
+      const dataEntrega = document.getElementById('dataEntrega').value; // yyyy-mm-dd or ''
 
-      try {
-        setProgress(20);
-        const q = new URLSearchParams({ ano });
-        if (mes) q.set('mes', mes);
-        if (dataEntrega) q.set('dataEntrega', dataEntrega);
+      const q = new URLSearchParams({ ano });
+      if (mes) q.set('mes', mes);
+      if (dataEntrega) q.set('dataEntrega', dataEntrega);
 
-        // chamada ao backend (vai rodar no Vercel GRU1)
-        const resp = await fetch(`/api/extrair?${q.toString()}`, { method: 'GET' });
-        if (!resp.ok) throw new Error('Erro na extração: ' + resp.status);
-        setProgress(60);
-        const json = await resp.json();
-        lastExtract = Array.isArray(json) ? json : [];
-        renderResultados(lastExtract);
-        setProgress(100);
-        setTimeout(()=>setProgress(0), 400);
-      } catch (err) {
-        alert('Erro: ' + err.message);
-        console.error(err);
-        setProgress(0);
-      }
-    });
+      setProgress(25);
+      const resp = await fetch(`/api/extrair?${q.toString()}`);
+      if (!resp.ok) throw new Error('Erro na extração: ' + resp.status);
+      setProgress(60);
+      const json = await resp.json();
+      lastExtract = Array.isArray(json) ? json : [];
+      renderResults(lastExtract);
+      setProgress(100);
+      setTimeout(()=>setProgress(0), 300);
+    } catch (err) {
+      alert(err.message);
+      setProgress(0);
+      console.error(err);
+    }
+  });
 
-    // --- Salvar extração (chama /api/salvar) ---
-    document.getElementById('btnSalvar').addEventListener('click', async () => {
-      if (!lastExtract || lastExtract.length === 0) return alert('Nenhuma extração para salvar.');
-      try {
-        setProgress(10);
-        const resp = await fetch('/api/salvar', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ rows: lastExtract })
-        });
-        const j = await resp.json();
-        if (!resp.ok) throw new Error(j.error || 'Erro ao salvar');
-        alert(`Salvo: ${j.inserted || j.data?.length || 'ok'}`);
-        setProgress(100);
-        setTimeout(()=>setProgress(0), 400);
-      } catch (err) {
-        alert('Erro ao salvar: ' + err.message);
-        setProgress(0);
-      }
-    });
+  function renderResults(rows) {
+    const tbody = document.querySelector('#tblResultados tbody');
+    tbody.innerHTML = '';
+    if (!rows || rows.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Nenhum resultado</td></tr>'; return; }
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.mes||''}</td><td>${r.municipio||''}</td><td>${r.unidade_orcamentaria||r.unidade||''}</td><td>${r.data_entrega||''}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
 
-    // --- Visualizar última extração (do banco) ---
-    document.getElementById('btnUltima').addEventListener('click', async () => {
-      try {
-        setProgress(10);
-        const resp = await fetch('/api/ultimas?limit=200');
-        const json = await resp.json();
-        if (!resp.ok) throw new Error(json.error || 'Erro');
-        // os dados vindos do banco já vêm como objetos com campos
-        lastExtract = Array.isArray(json) ? json : [];
-        renderResultados(lastExtract);
-        setProgress(100);
-        setTimeout(()=>setProgress(0), 400);
-      } catch (err) {
-        alert('Erro: ' + err.message);
-        setProgress(0);
-      }
-    });
+  // Salvar
+  document.getElementById('btnSalvar').addEventListener('click', async () => {
+    if (!lastExtract || lastExtract.length === 0) return alert('Nenhuma extração para salvar.');
+    try {
+      setProgress(10);
+      const resp = await fetch('/api/salvar', {
+        method: 'POST',
+        headers: {'content-type':'application/json'},
+        body: JSON.stringify({ rows: lastExtract })
+      });
+      const j = await resp.json();
+      if (!resp.ok) throw new Error(j.error || 'Erro ao salvar');
+      alert('Registros salvos: ' + (j.inserted || (j.data && j.data.length) || 'OK'));
+      setProgress(100);
+      setTimeout(()=>setProgress(0), 300);
+    } catch (err) {
+      alert('Erro ao salvar: ' + err.message);
+      setProgress(0);
+    }
+  });
 
-    function renderResultados(rows){
-      const tbody = document.querySelector('#tblResultados tbody');
+  // Visualizar últimas salvas
+  document.getElementById('btnUltima').addEventListener('click', async () => {
+    try {
+      setProgress(10);
+      const resp = await fetch('/api/ultimas?limit=200');
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || 'Erro');
+      lastExtract = Array.isArray(json) ? json : [];
+      renderResults(lastExtract);
+      setProgress(100);
+      setTimeout(()=>setProgress(0),300);
+    } catch (err) {
+      alert('Erro: ' + err.message);
+      setProgress(0);
+    }
+  });
+
+  // Carregar clientes para configuração
+  async function loadClients() {
+    try {
+      const resp = await fetch('/api/clients?onlyActive=false');
+      const data = await resp.json();
+      const tbody = document.querySelector('#tblClientes tbody');
       tbody.innerHTML = '';
-      if (!rows || rows.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Nenhum resultado</td></tr>'; return; }
-      for (const r of rows) {
+      for (const c of data) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${r.mes || ''}</td><td>${r.municipio || ''}</td><td>${r.unidade_orcamentaria || r.unidade || ''}</td><td>${r.data_entrega || ''}</td>`;
+        tr.innerHTML = `<td>${c.entidade}</td><td>${c.cod_tce}</td>
+          <td><select id="sel_${c.cod_tce}"><option value="sim" ${c.ativo==='sim'?'selected':''}>sim</option><option value="nao" ${c.ativo==='nao'?'selected':''}>nao</option></select></td>
+          <td><button data-cod="${c.cod_tce}">Salvar</button></td>`;
         tbody.appendChild(tr);
       }
+      // attach actions
+      document.querySelectorAll('#tblClientes button').forEach(btn => {
+        btn.onclick = async () => {
+          const cod = btn.dataset.cod;
+          const sel = document.getElementById(`sel_${cod}`);
+          btn.disabled = true;
+          try {
+            const r = await fetch('/api/update_cliente', {
+              method: 'POST',
+              headers: {'content-type':'application/json'},
+              body: JSON.stringify({ cod_tce: cod, ativo: sel.value })
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || 'Erro');
+            alert('Atualizado com sucesso');
+          } catch (err) {
+            alert('Erro: ' + err.message);
+          } finally { btn.disabled = false; }
+        };
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao carregar clientes: ' + err.message);
     }
+  }
 
-    // --- Configuração: listar clientes via /api/clients e atualizar via /api/update_cliente ---
-    async function loadClients(){
-      try {
-        const resp = await fetch('/api/clients?onlyActive=false');
-        const data = await resp.json();
-        const tbody = document.querySelector('#tblClientes tbody');
-        tbody.innerHTML = '';
-        for (const c of data) {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${c.entidade}</td><td>${c.cod_tce}</td>
-            <td><select id="sel_${c.cod_tce}">
-              <option value="sim" ${c.ativo === 'sim' ? 'selected' : ''}>sim</option>
-              <option value="nao" ${c.ativo === 'nao' ? 'selected' : ''}>nao</option>
-            </select></td>
-            <td><button data-cod="${c.cod_tce}">Salvar</button></td>`;
-          tbody.appendChild(tr);
-        }
+  document.getElementById('btnReloadClientes').addEventListener('click', loadClients);
 
-        // attach buttons
-        document.querySelectorAll('#tblClientes button').forEach(btn => {
-          btn.onclick = async () => {
-            const cod = btn.dataset.cod;
-            const sel = document.getElementById(`sel_${cod}`);
-            const novo = sel.value;
-            btn.disabled = true;
-            try {
-              const r = await fetch('/api/update_cliente', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ cod_tce: cod, ativo: novo })
-              });
-              const j = await r.json();
-              if (!r.ok) throw new Error(j.error || 'Erro');
-              alert('Atualizado com sucesso');
-            } catch (err) {
-              alert('Erro: ' + err.message);
-            } finally {
-              btn.disabled = false;
-            }
-          };
-        });
-      } catch (err) {
-        console.error(err);
-        alert('Erro ao carregar clientes: ' + err.message);
-      }
-    }
-
-    document.getElementById('btnReloadClientes').addEventListener('click', loadClients);
-
-    // init: carregar clientes e anos oculta
-    (function init(){ loadClients(); })();
-  </script>
+  // iniciar carregando clientes (não bloqueará extração)
+  loadClients();
+</script>
 </body>
 </html>

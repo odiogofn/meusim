@@ -12,37 +12,52 @@ const monthNamesPt = {
   '7': 'Julho','8': 'Agosto','9': 'Setembro','10': 'Outubro','11': 'Novembro','12': 'Dezembro'
 };
 
-function pad3(s){ return String(s).padStart(3,'0'); }
+function normalizeMonthFilter(m) {
+  if (!m) return null;
+  const n = String(m).trim();
+  if (!n) return null;
+  // se for número (1..12), converte para nome
+  if (/^\d+$/.test(n)) return monthNamesPt[String(parseInt(n,10))];
+  return n; // assume já é nome em pt
+}
+
 function parseDDMMYYYYtoISO(s){
   if(!s) return null;
   const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
   if(!m) return null;
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 export default async function handler(req, res) {
   try {
     const { ano, mes, dataEntrega } = req.query;
-    if (!ano) return res.status(400).json({ error: 'ano é obrigatório' });
+    if (!ano) return res.status(400).json({ error: 'Parâmetro "ano" é obrigatório' });
 
-    // pega clientes ativos
-    const { data: clientes, error: errCli } = await supabase.from('clientes').select('id,entidade,cod_tce').eq('ativo', 'sim').order('cod_tce', { ascending: true });
+    // pegar clientes ativos
+    const { data: clientes, error: errCli } = await supabase
+      .from('clientes')
+      .select('id, entidade, cod_tce')
+      .eq('ativo', 'sim')
+      .order('cod_tce', { ascending: true });
+
     if (errCli) return res.status(500).json({ error: errCli.message });
     if (!clientes || clientes.length === 0) return res.status(200).json([]);
 
     const results = [];
+    const mesFilter = normalizeMonthFilter(mes); // ex: 'Janeiro' ou null
+    const dataFilterISO = dataEntrega || null; // frontend envia YYYY-MM-DD or empty
 
-    for (let i = 0; i < clientes.length; i++) {
+    for (let i=0; i<clientes.length; i++) {
       const c = clientes[i];
-      const cod = pad3(c.cod_tce);
+      const cod = String(c.cod_tce).padStart(3,'0');
       const url = `https://municipios-transparencia.tce.ce.gov.br/index.php/municipios/prestacao/mun/${cod}/versao/${ano}`;
 
       try {
-        const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)' } });
+        const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Extração TCE)' } });
         if (!response.ok) {
           console.warn(`HTTP ${response.status} para ${url}`);
-          // opcional: push erro
           results.push({ mes: 'ERRO', municipio: c.entidade, unidade_orcamentaria: '—', data_entrega: `HTTP ${response.status}` });
           await sleep(2000);
           continue;
@@ -50,54 +65,50 @@ export default async function handler(req, res) {
         const html = await response.text();
         const $ = cheerio.load(html);
 
-        // tentar obter nome do município
         const municipio = ($('#barraConteudoTitulo h1 a').text().trim() || $('h1 a').text().trim() || c.entidade).trim();
 
-        // procurar a tabela com os dados (várias possibilidades)
-        const table = $('#montaTabela table').first().length ? $('#montaTabela table') : ($('table.tablesorter').first().length ? $('table.tablesorter') : $('#example'));
+        // localizar tabela
+        let table = $('#example');
+        if (!table.length) table = $('#montaTabela table').first();
+        if (!table.length) table = $('table.tablesorter').first();
 
         if (table && table.length) {
           table.find('tbody tr').each((_, tr) => {
             const tds = $(tr).find('td').map((i, td) => $(td).text().trim()).get();
 
-            // linha válida no exemplo tem 5 tds e o primeiro td com mês
-            if (tds.length >= 5 && tds[0]) {
-              const mesText = tds[0];
-              const dataEntregaText = tds[2] || '';
-              const unidade = tds[4] || '';
+            // pular linhas vazias/colspan
+            if (!tds || tds.length < 5) return;
 
-              // aplicar filtros: mes (por número) -> compara nome do mês em pt
-              if (mes && mes !== '' && String(mes) !== '') {
-                const desiredMonthName = monthNamesPt[String(parseInt(mes,10))];
-                if (!mesText.toLowerCase().includes(desiredMonthName.toLowerCase())) {
-                  return; // pula esta linha
-                }
-              }
+            const mesText = tds[0] || '';
+            const dataEntregaText = tds[2] || '';
+            const unidade = tds[4] || '';
 
-              // filtro por data de entrega (frontend envia YYYY-MM-DD) -> converter e comparar
-              if (dataEntrega && dataEntrega !== '') {
-                const iso = parseDDMMYYYYtoISO(dataEntregaText);
-                if (iso !== dataEntrega) return; // pula
-              }
-
-              results.push({
-                mes: mesText,
-                municipio,
-                unidade_orcamentaria: unidade,
-                data_entrega: dataEntregaText
-              });
+            // aplicar filtro de mês (se informado)
+            if (mesFilter) {
+              if (!mesText.toLowerCase().includes(mesFilter.toLowerCase())) return;
             }
+            // aplicar filtro por data de entrega (se informado) - comparar ISO
+            if (dataFilterISO) {
+              const iso = parseDDMMYYYYtoISO(dataEntregaText);
+              if (!iso || iso !== dataFilterISO) return;
+            }
+
+            results.push({
+              mes: mesText,
+              municipio,
+              unidade_orcamentaria: unidade,
+              data_entrega: dataEntregaText
+            });
           });
         } else {
-          // tabela não encontrada
           results.push({ mes: 'ERRO', municipio: c.entidade, unidade_orcamentaria: '—', data_entrega: 'Tabela não encontrada' });
         }
       } catch (err) {
-        console.error('erro ao processar', c.cod_tce, err.message);
+        console.error('Erro ao processar', c.cod_tce, err.message);
         results.push({ mes: 'ERRO', municipio: c.entidade, unidade_orcamentaria: '—', data_entrega: `Erro: ${err.message}` });
       }
 
-      // atraso de 2 segundos entre requests (requisito)
+      // respeitar intervalo de 2s entre requisições
       await sleep(2000);
     }
 
