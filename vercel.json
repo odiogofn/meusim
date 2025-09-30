@@ -1,9 +1,3 @@
 {
-  "version": 2,
-  "functions": {
-    "api/*.js": {
-      "runtime": "vercel-nodejs@18.x"
-    }
-  },
   "regions": ["gru1"]
 }
