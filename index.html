@@ -2,47 +2,43 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Painel de Consultas</title>
-  <script src="https://unpkg.com/@supabase/supabase-js"></script>
+  <title>Sistema de Extração - TCE</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f9f9f9; }
-    nav { display: flex; background: #333; }
-    nav button { flex: 1; padding: 15px; color: white; background: #333; border: none; cursor: pointer; }
-    nav button.active { background: #555; }
-    section { display: none; padding: 20px; }
-    section.active { display: block; }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-    table, th, td { border: 1px solid #ddd; }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    nav { margin-bottom: 20px; }
+    nav button { margin-right: 10px; padding: 8px 12px; cursor: pointer; }
+    .aba { display: none; }
+    .ativa { display: block; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    table, th, td { border: 1px solid #ccc; }
     th, td { padding: 8px; text-align: left; }
-    .progress-container { width: 100%; background: #eee; margin-top: 15px; border-radius: 5px; }
-    .progress-bar { width: 0%; height: 8px; background: #4caf50; border-radius: 5px; transition: width 1s ease; }
-    .form-group { margin: 10px 0; }
+    .progresso { height: 20px; background: #f0f0f0; margin-top: 10px; border-radius: 5px; overflow: hidden; }
+    .barra { height: 100%; width: 0; background: green; transition: width 0.4s ease; }
   </style>
 </head>
 <body>
+  <h1>Sistema de Extração TCE</h1>
+
   <nav>
-    <button id="btn-consulta" class="active">Consulta</button>
-    <button id="btn-config">Configuração</button>
+    <button onclick="mostrarAba('consulta')">Consulta</button>
+    <button onclick="mostrarAba('configuracao')">Configuração</button>
   </nav>
 
   <!-- Aba Consulta -->
-  <section id="consulta" class="active">
-    <h2>Consulta de Dados</h2>
-    <div class="form-group">
-      <label>Mês:</label>
-      <input type="number" id="filtro-mes" min="1" max="12">
-    </div>
-    <div class="form-group">
-      <label>Ano:</label>
-      <input type="number" id="filtro-ano" min="2000" max="2100">
-    </div>
-    <div class="form-group">
-      <label>Data de Entrega:</label>
-      <input type="date" id="filtro-data">
-    </div>
-    <button onclick="consultar()">Consultar</button>
-    <div class="progress-container"><div class="progress-bar" id="progress"></div></div>
-    <table id="tabela-consulta">
+  <div id="consulta" class="aba ativa">
+    <h2>Consulta</h2>
+
+    <label for="anoexc">Ano:</label>
+    <select id="anoexc"></select>
+
+    <button onclick="extrair()">Extração</button>
+    <button onclick="salvarExtracao()">Salvar Extração</button>
+    <button onclick="verUltimaExtracao()">Visualizar Última Extração</button>
+
+    <div class="progresso"><div id="barra" class="barra"></div></div>
+
+    <table id="tabelaResultados">
       <thead>
         <tr>
           <th>Mês</th>
@@ -53,104 +49,166 @@
       </thead>
       <tbody></tbody>
     </table>
-  </section>
+  </div>
 
   <!-- Aba Configuração -->
-  <section id="config">
-    <h2>Configuração de Clientes</h2>
-    <table id="tabela-config">
+  <div id="configuracao" class="aba">
+    <h2>Configuração de Municípios</h2>
+    <table id="tabelaClientes">
       <thead>
         <tr>
           <th>Entidade</th>
-          <th>Cod TCE</th>
+          <th>Código TCE</th>
           <th>Ativo</th>
-          <th>Ação</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
-  </section>
+  </div>
 
   <script>
-    // 🚨 Coloque suas chaves aqui
+    // 🔑 Configuração Supabase
     const SUPABASE_URL = "https://oxowmudtpuczbuzjpddf.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94b3dtdWR0cHVjemJ1empwZGRmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTIzMzcxMSwiZXhwIjoyMDc0ODA5NzExfQ.-xBez5fx4Mk8BEzm2YE7QWs53nME07xUVDSlACha4uU"; 
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94b3dtdWR0cHVjemJ1empwZGRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMzM3MTEsImV4cCI6MjA3NDgwOTcxMX0.lLA70RaONhuq0vOUuy17V_isNRyrdLyMnkgVtIsRH4E"; // use anon public para frontend
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Alternar abas
-    document.getElementById("btn-consulta").onclick = () => ativarAba("consulta");
-    document.getElementById("btn-config").onclick = () => ativarAba("config");
+    let resultados = [];
 
-    function ativarAba(aba) {
-      document.querySelectorAll("section").forEach(sec => sec.classList.remove("active"));
-      document.querySelectorAll("nav button").forEach(btn => btn.classList.remove("active"));
-      document.getElementById(aba).classList.add("active");
-      if (aba === "consulta") document.getElementById("btn-consulta").classList.add("active");
-      else document.getElementById("btn-config").classList.add("active");
-      if (aba === "config") carregarConfig();
+    // Preencher dropdown de anos
+    const anoSelect = document.getElementById("anoexc");
+    for (let ano = 2025; ano >= 2000; ano--) {
+      const opt = document.createElement("option");
+      opt.value = ano;
+      opt.textContent = ano;
+      anoSelect.appendChild(opt);
     }
 
-    // Consulta
-    async function consultar() {
-      const mes = document.getElementById("filtro-mes").value;
-      const ano = document.getElementById("filtro-ano").value;
-      const data = document.getElementById("filtro-data").value;
+    function mostrarAba(id) {
+      document.querySelectorAll(".aba").forEach(div => div.classList.remove("ativa"));
+      document.getElementById(id).classList.add("ativa");
+    }
 
-      let query = supabase.from("consultas").select("mes, municipio, unidade_orcamentaria, data_entrega");
+    // ======================
+    // ⚡ Aba Configuração
+    // ======================
+    async function carregarClientes() {
+      const { data, error } = await supabase.from("clientes").select("*").order("cod_tce");
+      if (error) {
+        console.error("Erro ao carregar clientes:", error);
+        return;
+      }
+      const tbody = document.querySelector("#tabelaClientes tbody");
+      tbody.innerHTML = "";
+      data.forEach(cli => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${cli.entidade}</td>
+          <td>${cli.cod_tce}</td>
+          <td>
+            <select onchange="atualizarAtivo(${cli.id}, this.value)">
+              <option value="sim" ${cli.ativo === "sim" ? "selected" : ""}>sim</option>
+              <option value="nao" ${cli.ativo === "nao" ? "selected" : ""}>nao</option>
+            </select>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
 
-      if (mes) query = query.eq("mes", mes);
-      if (ano) query = query.eq("ano", ano);
-      if (data) query = query.eq("data_entrega", data);
+    async function atualizarAtivo(id, valor) {
+      await supabase.from("clientes").update({ ativo: valor }).eq("id", id);
+    }
 
-      // filtrar só municípios ativos
-      query = query.in("municipio", supabase.from("clientes").select("entidade").eq("ativo", "sim"));
+    // ======================
+    // ⚡ Aba Consulta
+    // ======================
+    async function extrair() {
+      resultados = [];
+      const { data: clientes } = await supabase.from("clientes").select("*").eq("ativo", "sim");
 
-      // Barra de progresso
-      let progress = document.getElementById("progress");
-      progress.style.width = "0%";
-      setTimeout(() => progress.style.width = "70%", 100);
+      if (!clientes || clientes.length === 0) {
+        alert("Nenhum município ativo encontrado.");
+        return;
+      }
 
-      let { data: resultados, error } = await query;
-      progress.style.width = "100%";
+      const ano = document.getElementById("anoexc").value;
+      const barra = document.getElementById("barra");
 
-      if (error) { alert("Erro: " + error.message); return; }
+      for (let i = 0; i < clientes.length; i++) {
+        const cli = clientes[i];
+        const url = `https://municipios-transparencia.tce.ce.gov.br/index.php/municipios/prestacao/mun/${cli.cod_tce}/versao/${ano}`;
+        
+        try {
+          const resp = await fetch(url);
+          const html = await resp.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
 
-      let tbody = document.querySelector("#tabela-consulta tbody");
+          const municipio = doc.querySelector("#barraConteudoTitulo h1 a")?.textContent.trim() || cli.entidade;
+          const linhas = doc.querySelectorAll("#example tbody tr");
+
+          linhas.forEach(tr => {
+            const tds = tr.querySelectorAll("td");
+            if (tds.length >= 5 && tds[0].textContent.trim()) {
+              resultados.push({
+                mes: tds[0].textContent.trim(),
+                municipio,
+                unidade_orcamentaria: tds[4].textContent.trim(),
+                data_entrega: tds[2].textContent.trim()
+              });
+            }
+          });
+        } catch (err) {
+          console.error("Erro ao extrair:", err);
+        }
+
+        barra.style.width = `${((i+1)/clientes.length)*100}%`;
+        await new Promise(r => setTimeout(r, 2000)); // intervalo de 2s
+      }
+
+      renderTabela();
+    }
+
+    function renderTabela() {
+      const tbody = document.querySelector("#tabelaResultados tbody");
       tbody.innerHTML = "";
       resultados.forEach(r => {
-        let tr = document.createElement("tr");
-        tr.innerHTML = `<td>${r.mes}</td><td>${r.municipio}</td><td>${r.unidade_orcamentaria}</td><td>${r.data_entrega}</td>`;
-        tbody.appendChild(tr);
-      });
-    }
-
-    // Carregar clientes para configuração
-    async function carregarConfig() {
-      let { data: clientes, error } = await supabase.from("clientes").select("entidade, cod_tce, ativo");
-      if (error) { alert("Erro: " + error.message); return; }
-
-      let tbody = document.querySelector("#tabela-config tbody");
-      tbody.innerHTML = "";
-      clientes.forEach(c => {
-        let tr = document.createElement("tr");
+        const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${c.entidade}</td>
-          <td>${c.cod_tce}</td>
-          <td>${c.ativo}</td>
-          <td>
-            <button onclick="alterarAtivo('${c.cod_tce}','sim')">Ativar</button>
-            <button onclick="alterarAtivo('${c.cod_tce}','nao')">Desativar</button>
-          </td>`;
+          <td>${r.mes}</td>
+          <td>${r.municipio}</td>
+          <td>${r.unidade_orcamentaria}</td>
+          <td>${r.data_entrega}</td>
+        `;
         tbody.appendChild(tr);
       });
     }
 
-    // Alterar ativo
-    async function alterarAtivo(cod, valor) {
-      let { error } = await supabase.from("clientes").update({ ativo: valor }).eq("cod_tce", cod);
-      if (error) alert("Erro: " + error.message);
-      else carregarConfig();
+    async function salvarExtracao() {
+      if (resultados.length === 0) {
+        alert("Nenhum dado para salvar.");
+        return;
+      }
+      const { error } = await supabase.from("consultas").insert(resultados);
+      if (error) {
+        alert("Erro ao salvar: " + error.message);
+      } else {
+        alert("Extração salva com sucesso!");
+      }
     }
+
+    async function verUltimaExtracao() {
+      const { data, error } = await supabase.from("consultas").select("*").order("id", { ascending: false }).limit(50);
+      if (error) {
+        console.error("Erro ao buscar:", error);
+        return;
+      }
+      resultados = data;
+      renderTabela();
+    }
+
+    // Inicializar
+    carregarClientes();
   </script>
 </body>
 </html>
