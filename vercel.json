@@ -1,9 +1,9 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["gru1"],
+  "version": 2,
   "functions": {
-    "api/*.js": {
-      "memory": 1024
+    "api/extracao.js": {
+      "runtime": "nodejs18.x",
+      "regions": ["gru1"]
     }
   }
 }

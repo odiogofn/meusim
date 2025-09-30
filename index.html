@@ -206,22 +206,22 @@
 
     // Carrega clientes na aba Configuração
     async function carregarClientes() {
-      const { data, error } = await supabase.from("clientes").select("*");
-      if (error) return;
-      const tbody = document.querySelector("#clientes tbody");
-      tbody.innerHTML = "";
-      data.forEach(cli => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${cli.nome}</td>
-                        <td>
-                          <select onchange="atualizarCliente(${cli.id}, this.value)">
-                            <option value="sim" ${cli.ativo==="sim"?"selected":""}>Sim</option>
-                            <option value="nao" ${cli.ativo==="nao"?"selected":""}>Não</option>
-                          </select>
-                        </td>`;
-        tbody.appendChild(tr);
-      });
-    }
+  const { data, error } = await supabase.from("clientes").select("*");
+  if (error) return;
+  const tbody = document.querySelector("#clientes tbody");
+  tbody.innerHTML = "";
+  data.forEach(cli => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${cli.entidade}</td>
+                    <td>
+                      <select onchange="atualizarCliente(${cli.id}, this.value)">
+                        <option value="sim" ${cli.ativo==="sim"?"selected":""}>Sim</option>
+                        <option value="nao" ${cli.ativo==="nao"?"selected":""}>Não</option>
+                      </select>
+                    </td>`;
+    tbody.appendChild(tr);
+  });
+}
 
     async function atualizarCliente(id, ativo) {
       await supabase.from("clientes").update({ ativo }).eq("id", id);
