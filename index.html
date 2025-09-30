@@ -1,208 +1,233 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Painel TCE — Extração</title>
+  <meta charset="UTF-8" />
+  <title>Consulta TCE</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:16px}
-    .tabs{display:flex;gap:8px;margin-bottom:12px}
-    button{padding:8px 12px;cursor:pointer}
-    .panel{display:none}
-    .panel.active{display:block}
-    .progress{height:6px;background:#eee;border-radius:3px;overflow:hidden;margin:8px 0}
-    .progress > div{height:100%;width:0;background:linear-gradient(90deg,#4caf50,#2196f3);transition:width .4s}
-    table{width:100%;border-collapse:collapse;margin-top:10px}
-    th,td{border:1px solid #ddd;padding:6px;text-align:left}
-    label { margin-right: 8px; }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .tabs { display: flex; margin-bottom: 10px; cursor: pointer; }
+    .tab { padding: 10px 20px; border: 1px solid #ccc; }
+    .tab.active { background: #eee; font-weight: bold; }
+    .content { display: none; }
+    .content.active { display: block; }
+    .progress-container { width: 100%; background: #f3f3f3; border-radius: 5px; overflow: hidden; margin: 15px 0; }
+    .progress-bar { width: 0; height: 20px; background: #4caf50; transition: width 0.5s ease; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
   </style>
+  <script src="https://unpkg.com/@supabase/supabase-js"></script>
 </head>
 <body>
-  <h1>Extração TCE</h1>
+  <h1>Consulta TCE</h1>
 
+  <!-- Abas -->
   <div class="tabs">
-    <button id="tab-consulta">Consulta</button>
-    <button id="tab-config">Configuração</button>
+    <div class="tab active" onclick="openTab('consulta')">Consulta</div>
+    <div class="tab" onclick="openTab('config')">Configuração</div>
   </div>
 
-  <!-- Consulta -->
-  <div id="consulta" class="panel active">
-    <label>Ano:
-      <select id="ano"></select>
-    </label>
-    <label>Mês:
-      <select id="mes">
-        <option value="">Todos</option>
-        <option value="Janeiro">Janeiro</option><option value="Fevereiro">Fevereiro</option><option value="Março">Março</option>
-        <option value="Abril">Abril</option><option value="Maio">Maio</option><option value="Junho">Junho</option>
-        <option value="Julho">Julho</option><option value="Agosto">Agosto</option><option value="Setembro">Setembro</option>
-        <option value="Outubro">Outubro</option><option value="Novembro">Novembro</option><option value="Dezembro">Dezembro</option>
-      </select>
-    </label>
-    <label>Data de Entrega:
-      <input id="dataEntrega" type="date" />
-    </label>
+  <!-- Conteúdo da aba Consulta -->
+  <div id="consulta" class="content active">
+    <form id="consultaForm">
+      <label>Ano:
+        <select id="anoexc">
+          <script>
+            // gera anos 2025 -> 2000
+            for (let y = 2025; y >= 2000; y--) {
+              document.write(`<option value="${y}">${y}</option>`);
+            }
+          </script>
+        </select>
+      </label>
 
-    <div style="margin-top:8px">
-      <button id="btnExtrair">Extrair (server)</button>
-      <button id="btnSalvar">Salvar Extração</button>
-      <button id="btnUltima">Visualizar Última Extração</button>
+      <label>Mês:
+        <select id="mes">
+          <option value="">Todos</option>
+          <option>Janeiro</option>
+          <option>Fevereiro</option>
+          <option>Março</option>
+          <option>Abril</option>
+          <option>Maio</option>
+          <option>Junho</option>
+          <option>Julho</option>
+          <option>Agosto</option>
+          <option>Setembro</option>
+          <option>Outubro</option>
+          <option>Novembro</option>
+          <option>Dezembro</option>
+        </select>
+      </label>
+
+      <button type="button" onclick="extrair()">Extração</button>
+      <button type="button" onclick="salvarExtracao()">Salvar Extração</button>
+      <button type="button" onclick="verUltimaExtracao()">Visualizar Última Extração</button>
+    </form>
+
+    <!-- Barra de progresso -->
+    <div class="progress-container">
+      <div class="progress-bar" id="progressBar"></div>
     </div>
 
-    <div class="progress"><div id="bar"></div></div>
-
-    <h3>Resultados</h3>
-    <table id="tblResultados">
-      <thead><tr><th>Mês</th><th>Município</th><th>Unidade Orçamentária</th><th>Data de Entrega</th></tr></thead>
+    <!-- Resultados -->
+    <table id="resultado">
+      <thead>
+        <tr>
+          <th>Mês</th>
+          <th>Data Limite</th>
+          <th>Data Entrega</th>
+          <th>Situação</th>
+          <th>Unidade Orçamentária</th>
+        </tr>
+      </thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <!-- Configuração -->
-  <div id="config" class="panel">
-    <h3>Municípios (clientes)</h3>
-    <button id="btnReloadClientes">Recarregar</button>
-    <table id="tblClientes">
-      <thead><tr><th>Entidade</th><th>cod_tce</th><th>Ativo</th><th>Ação</th></tr></thead>
+  <!-- Conteúdo da aba Configuração -->
+  <div id="config" class="content">
+    <h3>Configuração de Municípios</h3>
+    <table id="clientes">
+      <thead>
+        <tr><th>Município</th><th>Ativo</th></tr>
+      </thead>
       <tbody></tbody>
     </table>
   </div>
 
-<script>
-  // popular anos
-  const anoSel = document.getElementById('ano');
-  for (let y=2025; y>=2000; y--) { const o=document.createElement('option'); o.value=y; o.textContent=y; anoSel.appendChild(o); }
+  <script>
+    // Supabase init
+    const supabaseUrl = "https://YOUR_PROJECT.supabase.co";
+    const supabaseKey = "YOUR_SUPABASE_KEY";
+    const supabase = supabasejs.createClient(supabaseUrl, supabaseKey);
 
-  // tabs
-  document.getElementById('tab-consulta').onclick = () => show('consulta');
-  document.getElementById('tab-config').onclick = () => { show('config'); loadClients(); };
-  function show(id){ document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); }
-
-  function setProgress(p){ document.getElementById('bar').style.width = p + '%'; }
-
-  let lastExtract = [];
-
-  // Extrair (server-side scraping)
-  document.getElementById('btnExtrair').addEventListener('click', async () => {
-    try {
-      setProgress(10);
-      const ano = document.getElementById('ano').value;
-      const mes = document.getElementById('mes').value; // 'Janeiro' or ''
-      const dataEntrega = document.getElementById('dataEntrega').value; // yyyy-mm-dd or ''
-
-      const q = new URLSearchParams({ ano });
-      if (mes) q.set('mes', mes);
-      if (dataEntrega) q.set('dataEntrega', dataEntrega);
-
-      setProgress(25);
-      const resp = await fetch(`/api/extrair?${q.toString()}`);
-      if (!resp.ok) throw new Error('Erro na extração: ' + resp.status);
-      setProgress(60);
-      const json = await resp.json();
-      lastExtract = Array.isArray(json) ? json : [];
-      renderResults(lastExtract);
-      setProgress(100);
-      setTimeout(()=>setProgress(0), 300);
-    } catch (err) {
-      alert(err.message);
-      setProgress(0);
-      console.error(err);
+    // Abas
+    function openTab(tabId) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+      document.querySelector(`.tab[onclick="openTab('${tabId}')"]`).classList.add('active');
+      document.getElementById(tabId).classList.add('active');
     }
-  });
 
-  function renderResults(rows) {
-    const tbody = document.querySelector('#tblResultados tbody');
-    tbody.innerHTML = '';
-    if (!rows || rows.length === 0) { tbody.innerHTML = '<tr><td colspan="4">Nenhum resultado</td></tr>'; return; }
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${r.mes||''}</td><td>${r.municipio||''}</td><td>${r.unidade_orcamentaria||r.unidade||''}</td><td>${r.data_entrega||''}</td>`;
-      tbody.appendChild(tr);
+    // Progress bar animada
+    function animateProgress() {
+      const bar = document.getElementById("progressBar");
+      bar.style.width = "0%";
+      let width = 0;
+      const interval = setInterval(() => {
+        if (width >= 100) {
+          clearInterval(interval);
+        } else {
+          width += 5;
+          bar.style.width = width + "%";
+        }
+      }, 100);
     }
-  }
 
-  // Salvar
-  document.getElementById('btnSalvar').addEventListener('click', async () => {
-    if (!lastExtract || lastExtract.length === 0) return alert('Nenhuma extração para salvar.');
-    try {
-      setProgress(10);
-      const resp = await fetch('/api/salvar', {
-        method: 'POST',
-        headers: {'content-type':'application/json'},
-        body: JSON.stringify({ rows: lastExtract })
-      });
-      const j = await resp.json();
-      if (!resp.ok) throw new Error(j.error || 'Erro ao salvar');
-      alert('Registros salvos: ' + (j.inserted || (j.data && j.data.length) || 'OK'));
-      setProgress(100);
-      setTimeout(()=>setProgress(0), 300);
-    } catch (err) {
-      alert('Erro ao salvar: ' + err.message);
-      setProgress(0);
-    }
-  });
+    // Extração
+    let ultimaExtracao = [];
 
-  // Visualizar últimas salvas
-  document.getElementById('btnUltima').addEventListener('click', async () => {
-    try {
-      setProgress(10);
-      const resp = await fetch('/api/ultimas?limit=200');
-      const json = await resp.json();
-      if (!resp.ok) throw new Error(json.error || 'Erro');
-      lastExtract = Array.isArray(json) ? json : [];
-      renderResults(lastExtract);
-      setProgress(100);
-      setTimeout(()=>setProgress(0),300);
-    } catch (err) {
-      alert('Erro: ' + err.message);
-      setProgress(0);
-    }
-  });
+    async function extrair() {
+      animateProgress();
 
-  // Carregar clientes para configuração
-  async function loadClients() {
-    try {
-      const resp = await fetch('/api/clients?onlyActive=false');
-      const data = await resp.json();
-      const tbody = document.querySelector('#tblClientes tbody');
-      tbody.innerHTML = '';
-      for (const c of data) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${c.entidade}</td><td>${c.cod_tce}</td>
-          <td><select id="sel_${c.cod_tce}"><option value="sim" ${c.ativo==='sim'?'selected':''}>sim</option><option value="nao" ${c.ativo==='nao'?'selected':''}>nao</option></select></td>
-          <td><button data-cod="${c.cod_tce}">Salvar</button></td>`;
-        tbody.appendChild(tr);
-      }
-      // attach actions
-      document.querySelectorAll('#tblClientes button').forEach(btn => {
-        btn.onclick = async () => {
-          const cod = btn.dataset.cod;
-          const sel = document.getElementById(`sel_${cod}`);
-          btn.disabled = true;
-          try {
-            const r = await fetch('/api/update_cliente', {
-              method: 'POST',
-              headers: {'content-type':'application/json'},
-              body: JSON.stringify({ cod_tce: cod, ativo: sel.value })
+      const { data, error } = await supabase
+        .from("clientes")
+        .select("*")
+        .eq("ativo", "sim");
+
+      if (error) { alert("Erro clientes: " + error.message); return; }
+
+      const ano = document.getElementById("anoexc").value;
+
+      ultimaExtracao = [];
+
+      for (const cli of data) {
+        try {
+          const resp = await fetch(`/api/extracao?cod_tce=${cli.cod_tce}&ano=${ano}`);
+          const json = await resp.json();
+          if (json.html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(json.html, "text/html");
+            const linhas = [...doc.querySelectorAll("#example tbody tr")];
+            linhas.forEach(tr => {
+              const cols = tr.querySelectorAll("td");
+              if (cols.length) {
+                ultimaExtracao.push({
+                  municipio: cli.nome,
+                  mes: cols[0].innerText.trim(),
+                  data_limite: cols[1].innerText.trim(),
+                  data_entrega: cols[2].innerText.trim(),
+                  situacao: cols[3].innerText.trim(),
+                  unidade: cols[4].innerText.trim(),
+                  ano
+                });
+              }
             });
-            const j = await r.json();
-            if (!r.ok) throw new Error(j.error || 'Erro');
-            alert('Atualizado com sucesso');
-          } catch (err) {
-            alert('Erro: ' + err.message);
-          } finally { btn.disabled = false; }
-        };
-      });
-    } catch (err) {
-      console.error(err);
-      alert('Erro ao carregar clientes: ' + err.message);
+          }
+        } catch (err) {
+          console.error("Erro extracao:", err);
+        }
+      }
+
+      renderTabela(ultimaExtracao);
     }
-  }
 
-  document.getElementById('btnReloadClientes').addEventListener('click', loadClients);
+    function renderTabela(dados) {
+      const tbody = document.querySelector("#resultado tbody");
+      tbody.innerHTML = "";
+      dados.forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${row.mes}</td>
+                        <td>${row.data_limite}</td>
+                        <td>${row.data_entrega}</td>
+                        <td>${row.situacao}</td>
+                        <td>${row.unidade}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
 
-  // iniciar carregando clientes (não bloqueará extração)
-  loadClients();
-</script>
+    // Salvar no Supabase
+    async function salvarExtracao() {
+      if (!ultimaExtracao.length) { alert("Nenhuma extração disponível"); return; }
+      const { error } = await supabase.from("consultas").insert(ultimaExtracao);
+      if (error) alert("Erro salvar: " + error.message);
+      else alert("Extração salva com sucesso!");
+    }
+
+    // Visualizar última do banco
+    async function verUltimaExtracao() {
+      const { data, error } = await supabase
+        .from("consultas")
+        .select("*")
+        .order("id", { ascending: false })
+        .limit(50);
+      if (error) { alert("Erro ver: " + error.message); return; }
+      renderTabela(data);
+    }
+
+    // Carrega clientes na aba Configuração
+    async function carregarClientes() {
+      const { data, error } = await supabase.from("clientes").select("*");
+      if (error) return;
+      const tbody = document.querySelector("#clientes tbody");
+      tbody.innerHTML = "";
+      data.forEach(cli => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${cli.nome}</td>
+                        <td>
+                          <select onchange="atualizarCliente(${cli.id}, this.value)">
+                            <option value="sim" ${cli.ativo==="sim"?"selected":""}>Sim</option>
+                            <option value="nao" ${cli.ativo==="nao"?"selected":""}>Não</option>
+                          </select>
+                        </td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function atualizarCliente(id, ativo) {
+      await supabase.from("clientes").update({ ativo }).eq("id", id);
+    }
+
+    carregarClientes();
+  </script>
 </body>
 </html>
