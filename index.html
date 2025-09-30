@@ -1,56 +1,48 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Teste Supabase</title>
+  <meta charset="UTF-8">
+  <title>Painel de Consultas</title>
+  <script src="https://unpkg.com/@supabase/supabase-js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    nav { margin-bottom: 20px; }
-    nav button { margin-right: 10px; padding: 10px; cursor: pointer; }
-    section { display: none; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f9f9f9; }
+    nav { display: flex; background: #333; }
+    nav button { flex: 1; padding: 15px; color: white; background: #333; border: none; cursor: pointer; }
+    nav button.active { background: #555; }
+    section { display: none; padding: 20px; }
     section.active { display: block; }
-
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-
-    /* Barra de progresso */
-    #progressContainer {
-      width: 100%;
-      background: #eee;
-      border-radius: 6px;
-      margin: 10px 0;
-      overflow: hidden;
-      height: 10px;
-      display: none;
-    }
-    #progressBar {
-      width: 0%;
-      height: 100%;
-      background: #4caf50;
-      transition: width 0.5s ease;
-    }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    table, th, td { border: 1px solid #ddd; }
+    th, td { padding: 8px; text-align: left; }
+    .progress-container { width: 100%; background: #eee; margin-top: 15px; border-radius: 5px; }
+    .progress-bar { width: 0%; height: 8px; background: #4caf50; border-radius: 5px; transition: width 1s ease; }
+    .form-group { margin: 10px 0; }
   </style>
 </head>
 <body>
-  <h1>Teste Supabase</h1>
   <nav>
-    <button onclick="showTab('consulta')">Consulta</button>
-    <button onclick="showTab('config')">Configuração</button>
+    <button id="btn-consulta" class="active">Consulta</button>
+    <button id="btn-config">Configuração</button>
   </nav>
 
   <!-- Aba Consulta -->
   <section id="consulta" class="active">
-    <h2>Consulta</h2>
-    <label>Mês: <input type="number" id="filtroMes" min="1" max="12"></label>
-    <label>Ano: <input type="number" id="filtroAno" min="2000"></label>
-    <label>Data de Entrega: <input type="date" id="filtroData"></label>
+    <h2>Consulta de Dados</h2>
+    <div class="form-group">
+      <label>Mês:</label>
+      <input type="number" id="filtro-mes" min="1" max="12">
+    </div>
+    <div class="form-group">
+      <label>Ano:</label>
+      <input type="number" id="filtro-ano" min="2000" max="2100">
+    </div>
+    <div class="form-group">
+      <label>Data de Entrega:</label>
+      <input type="date" id="filtro-data">
+    </div>
     <button onclick="consultar()">Consultar</button>
-
-    <!-- Barra de progresso -->
-    <div id="progressContainer"><div id="progressBar"></div></div>
-
-    <table id="resultadoConsulta">
+    <div class="progress-container"><div class="progress-bar" id="progress"></div></div>
+    <table id="tabela-consulta">
       <thead>
         <tr>
           <th>Mês</th>
@@ -65,13 +57,12 @@
 
   <!-- Aba Configuração -->
   <section id="config">
-    <h2>Configuração</h2>
-    <button onclick="carregarConfig()">Carregar Municípios</button>
-    <table id="tabelaConfig">
+    <h2>Configuração de Clientes</h2>
+    <table id="tabela-config">
       <thead>
         <tr>
           <th>Entidade</th>
-          <th>cod_tce</th>
+          <th>Cod TCE</th>
           <th>Ativo</th>
           <th>Ação</th>
         </tr>
@@ -80,94 +71,85 @@
     </table>
   </section>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
+    // 🚨 Coloque suas chaves aqui
     const SUPABASE_URL = "https://oxowmudtpuczbuzjpddf.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94b3dtdWR0cHVjemJ1empwZGRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMzM3MTEsImV4cCI6MjA3NDgwOTcxMX0.lLA70RaONhuq0vOUuy17V_isNRyrdLyMnkgVtIsRH4E";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94b3dtdWR0cHVjemJ1empwZGRmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1OTIzMzcxMSwiZXhwIjoyMDc0ODA5NzExfQ.-xBez5fx4Mk8BEzm2YE7QWs53nME07xUVDSlACha4uU"; 
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    function showTab(tab) {
-      document.querySelectorAll("section").forEach(s => s.classList.remove("active"));
-      document.getElementById(tab).classList.add("active");
-    }
+    // Alternar abas
+    document.getElementById("btn-consulta").onclick = () => ativarAba("consulta");
+    document.getElementById("btn-config").onclick = () => ativarAba("config");
 
-    // Simulação de barra de progresso
-    function startProgress() {
-      document.getElementById("progressContainer").style.display = "block";
-      document.getElementById("progressBar").style.width = "0%";
-      setTimeout(() => { document.getElementById("progressBar").style.width = "50%"; }, 200);
-    }
-    function finishProgress() {
-      document.getElementById("progressBar").style.width = "100%";
-      setTimeout(() => { document.getElementById("progressContainer").style.display = "none"; }, 500);
+    function ativarAba(aba) {
+      document.querySelectorAll("section").forEach(sec => sec.classList.remove("active"));
+      document.querySelectorAll("nav button").forEach(btn => btn.classList.remove("active"));
+      document.getElementById(aba).classList.add("active");
+      if (aba === "consulta") document.getElementById("btn-consulta").classList.add("active");
+      else document.getElementById("btn-config").classList.add("active");
+      if (aba === "config") carregarConfig();
     }
 
     // Consulta
     async function consultar() {
-      startProgress();
-      const mes = document.getElementById("filtroMes").value;
-      const ano = document.getElementById("filtroAno").value;
-      const dataEntrega = document.getElementById("filtroData").value;
+      const mes = document.getElementById("filtro-mes").value;
+      const ano = document.getElementById("filtro-ano").value;
+      const data = document.getElementById("filtro-data").value;
 
       let query = supabase.from("consultas").select("mes, municipio, unidade_orcamentaria, data_entrega");
 
       if (mes) query = query.eq("mes", mes);
       if (ano) query = query.eq("ano", ano);
-      if (dataEntrega) query = query.eq("data_entrega", dataEntrega);
+      if (data) query = query.eq("data_entrega", data);
 
-      // apenas municípios ativos
+      // filtrar só municípios ativos
       query = query.in("municipio", supabase.from("clientes").select("entidade").eq("ativo", "sim"));
 
-      const { data, error } = await query;
+      // Barra de progresso
+      let progress = document.getElementById("progress");
+      progress.style.width = "0%";
+      setTimeout(() => progress.style.width = "70%", 100);
 
-      finishProgress();
+      let { data: resultados, error } = await query;
+      progress.style.width = "100%";
 
-      if (error) {
-        alert("Erro: " + error.message);
-        return;
-      }
+      if (error) { alert("Erro: " + error.message); return; }
 
-      const tbody = document.querySelector("#resultadoConsulta tbody");
+      let tbody = document.querySelector("#tabela-consulta tbody");
       tbody.innerHTML = "";
-      data.forEach(row => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${row.mes}</td>
-          <td>${row.municipio}</td>
-          <td>${row.unidade_orcamentaria}</td>
-          <td>${row.data_entrega}</td>`;
+      resultados.forEach(r => {
+        let tr = document.createElement("tr");
+        tr.innerHTML = `<td>${r.mes}</td><td>${r.municipio}</td><td>${r.unidade_orcamentaria}</td><td>${r.data_entrega}</td>`;
         tbody.appendChild(tr);
       });
     }
 
-    // Carregar municípios na aba configuração
+    // Carregar clientes para configuração
     async function carregarConfig() {
-      const { data, error } = await supabase.from("clientes").select("*");
+      let { data: clientes, error } = await supabase.from("clientes").select("entidade, cod_tce, ativo");
       if (error) { alert("Erro: " + error.message); return; }
 
-      const tbody = document.querySelector("#tabelaConfig tbody");
+      let tbody = document.querySelector("#tabela-config tbody");
       tbody.innerHTML = "";
-      data.forEach(row => {
-        const tr = document.createElement("tr");
+      clientes.forEach(c => {
+        let tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${row.entidade}</td>
-          <td>${row.cod_tce}</td>
-          <td>${row.ativo}</td>
+          <td>${c.entidade}</td>
+          <td>${c.cod_tce}</td>
+          <td>${c.ativo}</td>
           <td>
-            <button onclick="toggleAtivo('${row.cod_tce}', '${row.ativo}')">
-              Alterar
-            </button>
+            <button onclick="alterarAtivo('${c.cod_tce}','sim')">Ativar</button>
+            <button onclick="alterarAtivo('${c.cod_tce}','nao')">Desativar</button>
           </td>`;
         tbody.appendChild(tr);
       });
     }
 
-    // Alternar ativo
-    async function toggleAtivo(cod_tce, ativoAtual) {
-      const novoAtivo = ativoAtual === "sim" ? "nao" : "sim";
-      const { error } = await supabase.from("clientes").update({ ativo: novoAtivo }).eq("cod_tce", cod_tce);
-      if (error) { alert("Erro ao atualizar: " + error.message); return; }
-      carregarConfig();
+    // Alterar ativo
+    async function alterarAtivo(cod, valor) {
+      let { error } = await supabase.from("clientes").update({ ativo: valor }).eq("cod_tce", cod);
+      if (error) alert("Erro: " + error.message);
+      else carregarConfig();
     }
   </script>
 </body>
