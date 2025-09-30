@@ -1,34 +1,56 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Sistema de Clientes</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teste Supabase</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     nav { margin-bottom: 20px; }
-    nav button { margin-right: 10px; padding: 6px 12px; cursor: pointer; }
-    .tab { display: none; }
-    .tab.active { display: block; }
-    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background: #f4f4f4; }
-    select { padding: 4px; }
+    nav button { margin-right: 10px; padding: 10px; cursor: pointer; }
+    section { display: none; }
+    section.active { display: block; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+
+    /* Barra de progresso */
+    #progressContainer {
+      width: 100%;
+      background: #eee;
+      border-radius: 6px;
+      margin: 10px 0;
+      overflow: hidden;
+      height: 10px;
+      display: none;
+    }
+    #progressBar {
+      width: 0%;
+      height: 100%;
+      background: #4caf50;
+      transition: width 0.5s ease;
+    }
   </style>
 </head>
 <body>
-  <h1>Sistema de Clientes</h1>
-
+  <h1>Teste Supabase</h1>
   <nav>
-    <button onclick="showTab('consultar')">Consultar</button>
-    <button onclick="showTab('configuracao')">Configuração</button>
+    <button onclick="showTab('consulta')">Consulta</button>
+    <button onclick="showTab('config')">Configuração</button>
   </nav>
 
-  <!-- Aba Consultar -->
-  <div id="consultar" class="tab active">
-    <h2>Consulta de Municípios Ativos</h2>
-    <button onclick="consultar()">Executar Consulta</button>
-    <table>
+  <!-- Aba Consulta -->
+  <section id="consulta" class="active">
+    <h2>Consulta</h2>
+    <label>Mês: <input type="number" id="filtroMes" min="1" max="12"></label>
+    <label>Ano: <input type="number" id="filtroAno" min="2000"></label>
+    <label>Data de Entrega: <input type="date" id="filtroData"></label>
+    <button onclick="consultar()">Consultar</button>
+
+    <!-- Barra de progresso -->
+    <div id="progressContainer"><div id="progressBar"></div></div>
+
+    <table id="resultadoConsulta">
       <thead>
         <tr>
           <th>Mês</th>
@@ -37,149 +59,116 @@
           <th>Data de Entrega</th>
         </tr>
       </thead>
-      <tbody id="consultaTable">
-        <!-- Preenchido via JS -->
-      </tbody>
+      <tbody></tbody>
     </table>
-  </div>
+  </section>
 
   <!-- Aba Configuração -->
-  <div id="configuracao" class="tab">
-    <h2>Configuração de Clientes</h2>
-    <table>
+  <section id="config">
+    <h2>Configuração</h2>
+    <button onclick="carregarConfig()">Carregar Municípios</button>
+    <table id="tabelaConfig">
       <thead>
         <tr>
           <th>Entidade</th>
-          <th>Código TCE</th>
+          <th>cod_tce</th>
           <th>Ativo</th>
+          <th>Ação</th>
         </tr>
       </thead>
-      <tbody id="clientesTable"></tbody>
+      <tbody></tbody>
     </table>
-  </div>
+  </section>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    // ⚡ Configuração Supabase
     const SUPABASE_URL = "https://oxowmudtpuczbuzjpddf.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94b3dtdWR0cHVjemJ1empwZGRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkyMzM3MTEsImV4cCI6MjA3NDgwOTcxMX0.lLA70RaONhuq0vOUuy17V_isNRyrdLyMnkgVtIsRH4E";
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Alternar abas
-    function showTab(tabId) {
-      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-      document.getElementById(tabId).classList.add('active');
+    function showTab(tab) {
+      document.querySelectorAll("section").forEach(s => s.classList.remove("active"));
+      document.getElementById(tab).classList.add("active");
     }
 
-    // Carregar clientes na aba Configuração
-    async function carregarClientes() {
-      const tbody = document.getElementById("clientesTable");
-      tbody.innerHTML = "<tr><td colspan='3'>Carregando...</td></tr>";
+    // Simulação de barra de progresso
+    function startProgress() {
+      document.getElementById("progressContainer").style.display = "block";
+      document.getElementById("progressBar").style.width = "0%";
+      setTimeout(() => { document.getElementById("progressBar").style.width = "50%"; }, 200);
+    }
+    function finishProgress() {
+      document.getElementById("progressBar").style.width = "100%";
+      setTimeout(() => { document.getElementById("progressContainer").style.display = "none"; }, 500);
+    }
 
-      const { data, error } = await supabase
-        .from("clientes")
-        .select("id, entidade, cod_tce, ativo")
-        .order("cod_tce", { ascending: true });
+    // Consulta
+    async function consultar() {
+      startProgress();
+      const mes = document.getElementById("filtroMes").value;
+      const ano = document.getElementById("filtroAno").value;
+      const dataEntrega = document.getElementById("filtroData").value;
+
+      let query = supabase.from("consultas").select("mes, municipio, unidade_orcamentaria, data_entrega");
+
+      if (mes) query = query.eq("mes", mes);
+      if (ano) query = query.eq("ano", ano);
+      if (dataEntrega) query = query.eq("data_entrega", dataEntrega);
+
+      // apenas municípios ativos
+      query = query.in("municipio", supabase.from("clientes").select("entidade").eq("ativo", "sim"));
+
+      const { data, error } = await query;
+
+      finishProgress();
 
       if (error) {
-        console.error("Erro ao carregar clientes:", error);
-        tbody.innerHTML = "<tr><td colspan='3'>Erro ao carregar clientes</td></tr>";
+        alert("Erro: " + error.message);
         return;
       }
 
+      const tbody = document.querySelector("#resultadoConsulta tbody");
       tbody.innerHTML = "";
-      data.forEach(cliente => {
+      data.forEach(row => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${cliente.entidade}</td>
-          <td>${cliente.cod_tce}</td>
-          <td>
-            <select onchange="atualizarAtivo(${cliente.id}, this.value)">
-              <option value="sim" ${cliente.ativo === "sim" ? "selected" : ""}>sim</option>
-              <option value="nao" ${cliente.ativo === "nao" ? "selected" : ""}>nao</option>
-            </select>
-          </td>
-        `;
+          <td>${row.mes}</td>
+          <td>${row.municipio}</td>
+          <td>${row.unidade_orcamentaria}</td>
+          <td>${row.data_entrega}</td>`;
         tbody.appendChild(tr);
       });
     }
 
-    // Atualizar campo ativo
-    async function atualizarAtivo(id, novoValor) {
-      const { error } = await supabase
-        .from("clientes")
-        .update({ ativo: novoValor })
-        .eq("id", id);
+    // Carregar municípios na aba configuração
+    async function carregarConfig() {
+      const { data, error } = await supabase.from("clientes").select("*");
+      if (error) { alert("Erro: " + error.message); return; }
 
-      if (error) {
-        alert("❌ Erro ao atualizar: " + error.message);
-      } else {
-        console.log(`✅ Cliente ${id} atualizado para ${novoValor}`);
-      }
-    }
-
-    // Consulta de municípios ativos
-    async function consultar() {
-      const tbody = document.getElementById("consultaTable");
-      tbody.innerHTML = "<tr><td colspan='4'>Carregando...</td></tr>";
-
-      const { data: clientes, error } = await supabase
-        .from("clientes")
-        .select("entidade, cod_tce")
-        .eq("ativo", "sim")
-        .order("cod_tce", { ascending: true });
-
-      if (error) {
-        tbody.innerHTML = "<tr><td colspan='4'>Erro ao buscar clientes ativos</td></tr>";
-        return;
-      }
-
+      const tbody = document.querySelector("#tabelaConfig tbody");
       tbody.innerHTML = "";
-
-      for (let i = 0; i < clientes.length; i++) {
-        const cliente = clientes[i];
-        const url = `https://municipios-transparencia.tce.ce.gov.br/index.php/municipios/prestacao/mun/${cliente.cod_tce}/versao/2025`;
-
-        try {
-          //⚠️ Precisa de proxy no backend por causa de CORS
-          const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
-          const html = await res.text();
-
-          // Extrair com regex
-          const municipioMatch = html.match(/<h1><a[^>]*>(.*?)<\/a><\/h1>/);
-          const municipio = municipioMatch ? municipioMatch[1] : cliente.entidade;
-
-          const regex = /<tr>\s*<td[^>]*>(.*?)<\/td>.*?<td[^>]*>.*?<\/td>.*?<td[^>]*>(.*?)<\/td>.*?<td[^>]*>.*?<\/td>.*?<td[^>]*>(.*?)<\/td>/g;
-          let match;
-          while ((match = regex.exec(html)) !== null) {
-            const mes = match[1].trim();
-            const dataEntrega = match[2].trim();
-            const unidade = match[3].trim();
-
-            if (mes && unidade && dataEntrega) {
-              const tr = document.createElement("tr");
-              tr.innerHTML = `
-                <td>${mes}</td>
-                <td>${municipio}</td>
-                <td>${unidade}</td>
-                <td>${dataEntrega}</td>
-              `;
-              tbody.appendChild(tr);
-            }
-          }
-        } catch (err) {
-          console.error("Erro consulta:", err);
-          const tr = document.createElement("tr");
-          tr.innerHTML = `<td colspan="4">Erro ao buscar dados de ${cliente.entidade}</td>`;
-          tbody.appendChild(tr);
-        }
-
-        // Delay de 2 segundos entre consultas
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
+      data.forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.entidade}</td>
+          <td>${row.cod_tce}</td>
+          <td>${row.ativo}</td>
+          <td>
+            <button onclick="toggleAtivo('${row.cod_tce}', '${row.ativo}')">
+              Alterar
+            </button>
+          </td>`;
+        tbody.appendChild(tr);
+      });
     }
 
-    // Carregar clientes no início
-    carregarClientes();
+    // Alternar ativo
+    async function toggleAtivo(cod_tce, ativoAtual) {
+      const novoAtivo = ativoAtual === "sim" ? "nao" : "sim";
+      const { error } = await supabase.from("clientes").update({ ativo: novoAtivo }).eq("cod_tce", cod_tce);
+      if (error) { alert("Erro ao atualizar: " + error.message); return; }
+      carregarConfig();
+    }
   </script>
 </body>
 </html>
