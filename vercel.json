@@ -1,9 +1,9 @@
 {
   "version": 2,
   "functions": {
-    "api/extracao.js": {
-      "runtime": "nodejs18.x",
-      "regions": ["gru1"]
+    "api/*.js": {
+      "runtime": "nodejs18.x"
     }
-  }
+  },
+  "regions": ["gru1"]
 }
