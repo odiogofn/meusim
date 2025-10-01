@@ -33,7 +33,6 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 export default async function handler(req, res) {
   try {
-    // aceita POST (body) ou GET (query)
     const params = req.method === 'POST' ? (req.body || {}) : (req.query || {});
     const { ano, mes, dataEntrega } = params;
 
@@ -84,7 +83,6 @@ export default async function handler(req, res) {
 
         if (!response.ok) {
           console.warn(`HTTP ${response.status} for ${url}`);
-          results.push({ cod_tce: cod, municipio: entidade, error: `HTTP ${response.status}` });
           await sleep(2000);
           continue;
         }
@@ -92,13 +90,11 @@ export default async function handler(req, res) {
         const html = await response.text();
         const $ = cheerio.load(html);
 
-        // nome do município (fallback para sua tabela)
         const municipioName = ($('#barraConteudoTitulo h1 a').text().trim()
                                 || $('#barraConteudoTitulo h1').text().trim()
                                 || $('h1 a').first().text().trim()
                                 || entidade).trim();
 
-        // localizar tabela: preferir #example, depois montaTabela, depois table.tablesorter, senão primeira table
         let table = $('#example');
         if (!table.length) table = $('#montaTabela table').first();
         if (!table.length) table = $('table.tablesorter').first();
@@ -106,15 +102,13 @@ export default async function handler(req, res) {
 
         if (!table || !table.length) {
           console.warn(`Tabela não encontrada em ${url}`);
-          results.push({ cod_tce: cod, municipio: municipioName, error: 'Tabela não encontrada' });
           await sleep(2000);
           continue;
         }
 
-        // percorrer linhas
         table.find('tbody tr').each((_, tr) => {
           const tds = $(tr).find('td').map((j, td) => $(td).text().trim()).get();
-          if (!tds || tds.length < 5) return; // pula linhas vazias/colspan
+          if (!tds || tds.length < 5) return;
 
           const mesText = tds[0] || '';
           const dataLimiteText = tds[1] || '';
@@ -122,34 +116,31 @@ export default async function handler(req, res) {
           const situacaoText = tds[3] || '';
           const unidade = tds[4] || '';
 
-          // filtro por mês
+          // filtros
           if (mesFilterName) {
             if (!mesText.toLowerCase().includes(String(mesFilterName).toLowerCase())) return;
           }
-          // filtro por dataEntrega (comparar ISO)
           if (dataFilterISO) {
             const iso = parseDDMMYYYYtoISO(dataEntregaText);
             if (!iso || iso !== dataFilterISO) return;
           }
 
-          results.push({
-            cod_tce: cod,
-            municipio: municipioName,
-            mes: mesText,
-            data_limite: dataLimiteText,
-            data_entrega: dataEntregaText,
-            situacao: situacaoText,
-            unidade_orcamentaria: unidade
-          });
+          // 🚨 Apenas envia pro JSON se TODOS os campos exigidos estiverem preenchidos
+          if (mesText && municipioName && unidade && dataEntregaText) {
+            results.push({
+              mes: mesText,
+              municipio: municipioName,
+              unidade_orcamentaria: unidade,
+              data_entrega: dataEntregaText
+            });
+          }
         });
 
       } catch (errFetch) {
         console.error(`Erro ao processar ${cod} (${entidade}):`, errFetch);
-        results.push({ cod_tce: cod, municipio: entidade, error: errFetch.message || String(errFetch) });
       }
 
-      // intervalo obrigatório de 2s
-      await sleep(2000);
+      await sleep(4000);
     }
 
     return res.status(200).json(results);
