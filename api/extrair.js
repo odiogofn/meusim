@@ -140,7 +140,7 @@ export default async function handler(req, res) {
         console.error(`Erro ao processar ${cod} (${entidade}):`, errFetch);
       }
 
-      await sleep(4000);
+      await sleep(1500);
     }
 
     return res.status(200).json(results);
