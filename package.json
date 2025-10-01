@@ -1,10 +1,16 @@
 {
-  "name": "tce-extraction",
+  "name": "meusim",
   "version": "1.0.0",
+  "description": "Projeto de extração e configuração TCE + Supabase",
+  "main": "index.js",
   "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "node index.js"
+  },
   "dependencies": {
-    "cheerio": "^1.0.0-rc.12",
-    "@supabase/supabase-js": "^2.31.0",
+    "@supabase/supabase-js": "^2.45.3",
+    "cheerio": "^1.0.0",
     "node-fetch": "^3.3.2"
   }
 }
