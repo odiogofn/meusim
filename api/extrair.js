@@ -1,84 +1,160 @@
-import cheerio from "cheerio";
+// api/extrair.js
+import * as cheerio from "cheerio";
 import fetch from "node-fetch";
 import { createClient } from "@supabase/supabase-js";
 
-// Conecta ao Supabase
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars");
+}
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const monthNamesPt = {
+  '1': 'Janeiro','2': 'Fevereiro','3': 'Março','4': 'Abril','5': 'Maio','6': 'Junho',
+  '7': 'Julho','8': 'Agosto','9': 'Setembro','10': 'Outubro','11': 'Novembro','12': 'Dezembro'
+};
+
+function monthNumberToName(n){
+  if(!n && n !== 0) return null;
+  const v = Number(n);
+  if (isNaN(v)) return null;
+  return monthNamesPt[String(v)] || null;
+}
+
+function parseDDMMYYYYtoISO(s){
+  if(!s) return null;
+  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if(!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Método não permitido" });
-  }
-
   try {
-    const { ano } = req.body;
+    // aceita POST (body) ou GET (query)
+    const params = req.method === 'POST' ? (req.body || {}) : (req.query || {});
+    const { ano, mes, dataEntrega } = params;
+
     if (!ano) {
-      return res.status(400).json({ error: "Ano não informado" });
+      return res.status(400).json({ error: 'Parâmetro "ano" é obrigatório' });
     }
 
-    // Busca clientes ativos
-    const { data: clientes, error: errClientes } = await supabase
-      .from("clientes")
-      .select("cod_tce, entidade")
-      .eq("ativo", "sim");
+    // preparar filtros
+    let mesFilterName = null;
+    if (mes && String(mes).trim() !== '') {
+      mesFilterName = /^\d+$/.test(String(mes).trim()) ? monthNumberToName(mes) : String(mes).trim();
+    }
+    const dataFilterISO = dataEntrega && dataEntrega !== '' ? String(dataEntrega) : null;
 
-    if (errClientes) {
-      return res.status(500).json({ error: "Erro no Supabase", details: errClientes });
+    // buscar clientes ativos
+    const { data: clientes, error: errCli } = await supabase
+      .from('clientes')
+      .select('id, entidade, cod_tce, ativo')
+      .eq('ativo', 'sim')
+      .order('cod_tce', { ascending: true });
+
+    if (errCli) {
+      console.error('Erro ao buscar clientes:', errCli);
+      return res.status(500).json({ error: 'Erro ao buscar clientes', details: errCli.message || errCli });
     }
 
-    let resultados = [];
+    if (!clientes || clientes.length === 0) {
+      return res.status(200).json([]);
+    }
 
-    // Percorre clientes ativos
-    for (const cliente of clientes) {
-      const url = `https://municipios-transparencia.tce.ce.gov.br/index.php/municipios/prestacao/mun/${cliente.cod_tce}/versao/${ano}`;
-      console.log("🔎 Acessando:", url);
+    const results = [];
+
+    for (let i = 0; i < clientes.length; i++) {
+      const c = clientes[i];
+      const raw = c.cod_tce ?? c['cod.tce'] ?? c.codTce ?? '';
+      const cod = String(raw).padStart(3, '0');
+      const entidade = c.entidade ?? '—';
+      const url = `https://municipios-transparencia.tce.ce.gov.br/index.php/municipios/prestacao/mun/${cod}/versao/${ano}`;
 
       try {
-        const response = await fetch(url);
+        console.log(`(${i+1}/${clientes.length}) Fetching: ${url}`);
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Extração TCE; contact)',
+            'Accept': 'text/html,application/xhtml+xml'
+          }
+        });
+
         if (!response.ok) {
-          console.error(`Erro HTTP ${response.status} para ${cliente.entidade}`);
+          console.warn(`HTTP ${response.status} for ${url}`);
+          results.push({ cod_tce: cod, municipio: entidade, error: `HTTP ${response.status}` });
+          await sleep(2000);
           continue;
         }
 
         const html = await response.text();
         const $ = cheerio.load(html);
 
-        const linhas = $("#example tbody tr");
-        if (linhas.length === 0) {
-          console.warn(`⚠️ Nenhuma linha encontrada para ${cliente.entidade}`);
+        // nome do município (fallback para sua tabela)
+        const municipioName = ($('#barraConteudoTitulo h1 a').text().trim()
+                                || $('#barraConteudoTitulo h1').text().trim()
+                                || $('h1 a').first().text().trim()
+                                || entidade).trim();
+
+        // localizar tabela: preferir #example, depois montaTabela, depois table.tablesorter, senão primeira table
+        let table = $('#example');
+        if (!table.length) table = $('#montaTabela table').first();
+        if (!table.length) table = $('table.tablesorter').first();
+        if (!table.length) table = $('table').first();
+
+        if (!table || !table.length) {
+          console.warn(`Tabela não encontrada em ${url}`);
+          results.push({ cod_tce: cod, municipio: municipioName, error: 'Tabela não encontrada' });
+          await sleep(2000);
           continue;
         }
 
-        linhas.each((_, el) => {
-          const tds = $(el).find("td");
-          if (tds.length >= 5) {
-            resultados.push({
-              mes: $(tds[0]).text().trim(),
-              data_limite: $(tds[1]).text().trim(),
-              data_entrega: $(tds[2]).text().trim(),
-              situacao: $(tds[3]).text().trim(),
-              unidade: $(tds[4]).text().trim(),
-              municipio: cliente.entidade,
-              ano: ano
-            });
+        // percorrer linhas
+        table.find('tbody tr').each((_, tr) => {
+          const tds = $(tr).find('td').map((j, td) => $(td).text().trim()).get();
+          if (!tds || tds.length < 5) return; // pula linhas vazias/colspan
+
+          const mesText = tds[0] || '';
+          const dataLimiteText = tds[1] || '';
+          const dataEntregaText = tds[2] || '';
+          const situacaoText = tds[3] || '';
+          const unidade = tds[4] || '';
+
+          // filtro por mês
+          if (mesFilterName) {
+            if (!mesText.toLowerCase().includes(String(mesFilterName).toLowerCase())) return;
           }
+          // filtro por dataEntrega (comparar ISO)
+          if (dataFilterISO) {
+            const iso = parseDDMMYYYYtoISO(dataEntregaText);
+            if (!iso || iso !== dataFilterISO) return;
+          }
+
+          results.push({
+            cod_tce: cod,
+            municipio: municipioName,
+            mes: mesText,
+            data_limite: dataLimiteText,
+            data_entrega: dataEntregaText,
+            situacao: situacaoText,
+            unidade_orcamentaria: unidade
+          });
         });
+
       } catch (errFetch) {
-        console.error(`❌ Erro ao buscar dados do TCE para ${cliente.entidade}`, errFetch);
+        console.error(`Erro ao processar ${cod} (${entidade}):`, errFetch);
+        results.push({ cod_tce: cod, municipio: entidade, error: errFetch.message || String(errFetch) });
       }
+
+      // intervalo obrigatório de 2s
+      await sleep(2000);
     }
 
-    // Salva no Supabase apenas se tiver dados
-    if (resultados.length > 0) {
-      await supabase.from("consultas").insert(resultados);
-    }
-
-    return res.status(200).json({ sucesso: true, dados: resultados });
+    return res.status(200).json(results);
   } catch (err) {
-    console.error("❌ Erro geral:", err);
-    return res.status(500).json({ error: "Erro ao extrair", details: err.message });
+    console.error('ERRO GERAL /api/extrair:', err);
+    return res.status(500).json({ error: err.message || 'Erro interno na extração' });
   }
 }
