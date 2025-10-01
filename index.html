@@ -1,310 +1,122 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Painel TCE — Extração</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel - Extração Tribunal</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:18px}
-    .tabs{display:flex;gap:8px;margin-bottom:12px}
-    .tab{padding:8px 12px;border:1px solid #ddd;cursor:pointer;border-radius:6px;background:#fafafa}
-    .tab.active{background:#e6f0ff;border-color:#9fc0ff}
-    .panel{display:none;padding:8px 0}
-    .panel.active{display:block}
-    label{margin-right:8px}
-    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .progress{height:8px;background:#eee;border-radius:6px;overflow:hidden;margin:10px 0}
-    .progress > div{height:100%;width:0;background:linear-gradient(90deg,#4caf50,#2196f3);transition:width .35s}
-    table{width:100%;border-collapse:collapse;margin-top:10px}
-    th,td{border:1px solid #ddd;padding:6px;text-align:left}
-    button{padding:6px 10px;cursor:pointer;border-radius:4px}
-    .small{font-size:13px;color:#444}
-    .status{margin-left:10px;color:#333}
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f5f5f5;
+    }
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    label { display: block; margin-top: 10px; }
+    select, input, button {
+      margin-top: 5px;
+      padding: 8px;
+      width: 100%;
+      max-width: 300px;
+    }
+    button {
+      background: #0070f3;
+      color: white;
+      border: none;
+      cursor: pointer;
+      margin-top: 15px;
+      border-radius: 4px;
+    }
+    button:hover { background: #005bb5; }
+    pre {
+      background: #222;
+      color: #0f0;
+      padding: 15px;
+      border-radius: 5px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>
-  <h1>Painel TCE — Extração</h1>
+  <h1>Consulta - Tribunal de Contas</h1>
 
-  <div class="tabs" id="tabs">
-    <div class="tab active" data-panel="consulta">Consulta</div>
-    <div class="tab" data-panel="config">Configuração</div>
+  <div class="card">
+    <label for="cod_tce">Código TCE:</label>
+    <input type="text" id="cod_tce" placeholder="Ex: 123456" />
+
+    <label for="ano">Ano:</label>
+    <select id="ano"></select>
+
+    <label for="mes">Mês:</label>
+    <select id="mes">
+      <option value="">Todos</option>
+      <option value="Janeiro">Janeiro</option>
+      <option value="Fevereiro">Fevereiro</option>
+      <option value="Março">Março</option>
+      <option value="Abril">Abril</option>
+      <option value="Maio">Maio</option>
+      <option value="Junho">Junho</option>
+      <option value="Julho">Julho</option>
+      <option value="Agosto">Agosto</option>
+      <option value="Setembro">Setembro</option>
+      <option value="Outubro">Outubro</option>
+      <option value="Novembro">Novembro</option>
+      <option value="Dezembro">Dezembro</option>
+    </select>
+
+    <button onclick="extrairDados()">Extrair Dados</button>
   </div>
 
-  <!-- CONSULTA -->
-  <div id="consulta" class="panel active">
-    <div class="controls">
-      <label>Ano:
-        <select id="selAno"></select>
-      </label>
-
-      <label>Mês:
-        <select id="selMes">
-          <option value="">Todos</option>
-          <option>Janeiro</option><option>Fevereiro</option><option>Março</option>
-          <option>Abril</option><option>Maio</option><option>Junho</option>
-          <option>Julho</option><option>Agosto</option><option>Setembro</option>
-          <option>Outubro</option><option>Novembro</option><option>Dezembro</option>
-        </select>
-      </label>
-
-      <label>Data de Entrega:
-        <input id="inpData" type="date" />
-      </label>
-
-      <button id="btnExtrair">🔍 Extrair</button>
-      <button id="btnSalvar">💾 Salvar Extração</button>
-      <button id="btnUltimaDB">📥 Visualizar Última (DB)</button>
-      <button id="btnUltimaLocal">📂 Carregar Última (local)</button>
-
-      <span class="status small" id="statusTxt">Pronto.</span>
-    </div>
-
-    <div class="progress"><div id="progressBar"></div></div>
-
-    <h3>Resultados extraídos</h3>
-    <table id="tblResultados">
-      <thead><tr><th>Mês</th><th>Município</th><th>Unidade Orçamentária</th><th>Data de Entrega</th></tr></thead>
-      <tbody></tbody>
-    </table>
+  <div class="card">
+    <h2>Resultado</h2>
+    <pre id="resultado">Nenhuma consulta ainda...</pre>
   </div>
 
-  <!-- CONFIG -->
-  <div id="config" class="panel">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <h3>Configuração de Municípios</h3>
-      <div>
-        <button id="btnReloadClientes">↻ Recarregar</button>
-      </div>
-    </div>
-
-    <table id="tblClientes">
-      <thead><tr><th>Entidade</th><th>cod_tce</th><th>Ativo</th><th>Ação</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-<script>
-/* ------------------------- Inicialização UI ------------------------- */
-const tabs = document.querySelectorAll('.tab');
-tabs.forEach(t => t.addEventListener('click', () => {
-  tabs.forEach(x => x.classList.remove('active'));
-  t.classList.add('active');
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.getElementById(t.dataset.panel).classList.add('active');
-  if (t.dataset.panel === 'config') loadClients();
-}));
-const selAno = document.getElementById('selAno');
-for (let y=2025; y>=2000; y--) { const o=document.createElement('option'); o.value=y; o.textContent=y; selAno.appendChild(o); }
-
-/* ------------------------- Helpers ------------------------- */
-const setStatus = txt => document.getElementById('statusTxt').textContent = txt;
-const setProgress = pct => document.getElementById('progressBar').style.width = pct + '%';
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const tbodyResults = document.querySelector('#tblResultados tbody');
-
-/* ------------------------- Endpoints (backend) ------------------------- */
-/*
- Expected backend endpoints (previamente criados no Vercel):
- - GET  /api/clients?onlyActive=false
- - GET  /api/extrair?ano=2025&mes=Janeiro&dataEntrega=2025-09-30
- - POST /api/salvar     { rows: [...] }
- - GET  /api/ultimas?limit=200
- - POST /api/update_cliente { cod_tce, ativo }
-*/
-
-/* ------------------------- Fluxos ------------------------- */
-let lastExtract = [];
-
-// Extrair (chama backend /api/extrair)
-document.getElementById('btnExtrair').addEventListener('click', async () => {
-  try {
-    setStatus('Iniciando extração...');
-    setProgress(5);
-    const ano = document.getElementById('selAno').value;
-    const mes = document.getElementById('selMes').value; // month name or ''
-    const dataEntrega = document.getElementById('inpData').value || '';
-
-    // montar query params
-    const params = new URLSearchParams({ ano });
-    if (mes) params.set('mes', mes);
-    if (dataEntrega) params.set('dataEntrega', dataEntrega);
-
-    setProgress(20);
-    setStatus('Chamando backend para extrair (pode demorar) ...');
-
-    // request to backend (Vercel function that scrapes)
-    const resp = await fetch('/api/extrair?' + params.toString(), { method: 'GET' });
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(()=>({ error: 'Erro desconhecido' }));
-      throw new Error(err.error || `HTTP ${resp.status}`);
+  <script>
+    // Preencher anos dinamicamente
+    const anoSelect = document.getElementById("ano");
+    const anoAtual = new Date().getFullYear();
+    for (let a = anoAtual; a >= 2015; a--) {
+      const opt = document.createElement("option");
+      opt.value = a;
+      opt.textContent = a;
+      anoSelect.appendChild(opt);
     }
 
-    setProgress(60);
-    const json = await resp.json();
-    if (!Array.isArray(json)) throw new Error('Resposta inesperada do backend');
+    async function extrairDados() {
+      const cod_tce = document.getElementById("cod_tce").value;
+      const ano = document.getElementById("ano").value;
+      const mes = document.getElementById("mes").value;
 
-    lastExtract = json;
-    // save local copy so user can view without reprocessing
-    try { localStorage.setItem('ultimaExtracao', JSON.stringify({ when: new Date().toISOString(), rows: lastExtract })); } catch(e){/*ignore*/}
+      if (!cod_tce || !ano) {
+        alert("Preencha o código TCE e o ano!");
+        return;
+      }
 
-    renderResults(lastExtract);
-    setProgress(100);
-    setStatus(`Extração finalizada — ${lastExtract.length} registros (salvos localmente).`);
-    setTimeout(()=>setProgress(0), 400);
-  } catch (err) {
-    console.error('Erro extrair:', err);
-    setStatus('Erro na extração: ' + (err.message || err));
-    setProgress(0);
-  }
-});
+      try {
+        const response = await fetch("/api/extrair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cod_tce, ano, mes })
+        });
 
-// Render resultados na tabela
-function renderResults(rows) {
-  tbodyResults.innerHTML = '';
-  if (!rows || rows.length === 0) {
-    tbodyResults.innerHTML = '<tr><td colspan="4">Nenhum resultado</td></tr>';
-    return;
-  }
-  for (const r of rows) {
-    const tr = document.createElement('tr');
-    // alguns backends podem enviar 'unidade' em vez de 'unidade_orcamentaria'
-    const unidade = r.unidade_orcamentaria ?? r.unidade ?? '';
-    tr.innerHTML = `<td>${r.mes ?? ''}</td><td>${r.municipio ?? ''}</td><td>${unidade}</td><td>${r.data_entrega ?? ''}</td>`;
-    tbodyResults.appendChild(tr);
-  }
-}
+        const data = await response.json();
 
-// Salvar extração no banco via /api/salvar
-document.getElementById('btnSalvar').addEventListener('click', async () => {
-  if (!lastExtract || lastExtract.length === 0) return alert('Nenhuma extração para salvar.');
-  try {
-    setStatus('Salvando extração no banco...');
-    setProgress(10);
-    const resp = await fetch('/api/salvar', {
-      method: 'POST',
-      headers: {'content-type':'application/json'},
-      body: JSON.stringify({ rows: lastExtract })
-    });
-    const j = await resp.json();
-    if (!resp.ok) throw new Error(j.error || 'Erro ao salvar');
-    setStatus(`Salvo no banco (${j.inserted ?? (j.data?.length) ?? 'ok'} registros)`);
-    setProgress(100);
-    setTimeout(()=>setProgress(0),300);
-  } catch (err) {
-    console.error('Erro salvar:', err);
-    setStatus('Erro ao salvar: ' + (err.message || err));
-    setProgress(0);
-  }
-});
-
-// Visualizar últimas salvas (DB)
-document.getElementById('btnUltimaDB').addEventListener('click', async () => {
-  try {
-    setStatus('Buscando últimas extrações no banco...');
-    setProgress(10);
-    const resp = await fetch('/api/ultimas?limit=200');
-    const j = await resp.json();
-    if (!resp.ok) throw new Error(j.error || 'Erro ao buscar');
-    lastExtract = Array.isArray(j) ? j : [];
-    renderResults(lastExtract);
-    setStatus(`Carregado do banco: ${lastExtract.length} registros.`);
-    setProgress(100);
-    setTimeout(()=>setProgress(0),300);
-  } catch (err) {
-    console.error('Erro ultimas:', err);
-    setStatus('Erro ao buscar últimas: ' + (err.message || err));
-    setProgress(0);
-  }
-});
-
-// Carregar última extração salva localmente (localStorage)
-document.getElementById('btnUltimaLocal').addEventListener('click', () => {
-  try {
-    const raw = localStorage.getItem('ultimaExtracao');
-    if (!raw) { setStatus('Nenhuma extração local encontrada.'); return; }
-    const obj = JSON.parse(raw);
-    lastExtract = obj.rows || [];
-    renderResults(lastExtract);
-    setStatus('Última extração carregada do localStorage (' + new Date(obj.when).toLocaleString() + ').');
-  } catch (err) {
-    console.error('Erro local:', err);
-    setStatus('Erro ao carregar local: ' + err.message);
-  }
-});
-
-/* ------------------------- Configuração (clientes) ------------------------- */
-const tblClientesBody = document.querySelector('#tblClientes tbody');
-
-async function loadClients() {
-  try {
-    setStatus('Carregando clientes...');
-    const resp = await fetch('/api/clients?onlyActive=false');
-    if (!resp.ok) {
-      const e = await resp.json().catch(()=>({ error:'Erro' }));
-      throw new Error(e.error || `HTTP ${resp.status}`);
+        if (response.ok) {
+          document.getElementById("resultado").innerText = JSON.stringify(data, null, 2);
+        } else {
+          document.getElementById("resultado").innerText = `Erro extrair: ${data.error}`;
+        }
+      } catch (err) {
+        document.getElementById("resultado").innerText = `Erro extrair: ${err}`;
+      }
     }
-    const clients = await resp.json();
-    tblClientesBody.innerHTML = '';
-    if (!Array.isArray(clients) || clients.length === 0) {
-      tblClientesBody.innerHTML = '<tr><td colspan="4">Nenhum cliente</td></tr>';
-      setStatus('Nenhum cliente encontrado.');
-      return;
-    }
-    for (const c of clients) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${c.entidade ?? c.Entidade ?? ''}</td>
-        <td>${c.cod_tce ?? ''}</td>
-        <td>
-          <select id="sel_${c.cod_tce}">
-            <option value="sim" ${c.ativo==='sim'?'selected':''}>sim</option>
-            <option value="nao" ${c.ativo==='nao'?'selected':''}>nao</option>
-          </select>
-        </td>
-        <td><button data-cod="${c.cod_tce}">Salvar</button></td>
-      `;
-      tblClientesBody.appendChild(tr);
-    }
-
-    // attach click handlers
-    tblClientesBody.querySelectorAll('button[data-cod]').forEach(btn => {
-      btn.onclick = async () => {
-        const cod = btn.dataset.cod;
-        const sel = document.getElementById('sel_' + cod);
-        const novo = sel.value;
-        btn.disabled = true;
-        try {
-          setStatus('Atualizando cliente ' + cod + ' → ' + novo + ' ...');
-          const r = await fetch('/api/update_cliente', {
-            method: 'POST',
-            headers: {'content-type':'application/json'},
-            body: JSON.stringify({ cod_tce: cod, ativo: novo })
-          });
-          const j = await r.json();
-          if (!r.ok) throw new Error(j.error || 'Erro');
-          setStatus('Atualizado ' + cod + ' → ' + novo);
-        } catch (err) {
-          console.error('Erro update_cliente', err);
-          setStatus('Erro ao atualizar: ' + err.message);
-          alert('Erro: ' + (err.message || err));
-        } finally { btn.disabled = false; }
-      };
-    });
-
-    setStatus('Clientes carregados: ' + clients.length);
-  } catch (err) {
-    console.error('Erro loadClients', err);
-    setStatus('Erro ao carregar clientes: ' + (err.message || err));
-  }
-}
-
-document.getElementById('btnReloadClientes').addEventListener('click', loadClients);
-
-/* ------------------------- Inicial ------------------------- */
-loadClients();
-setProgress(0);
-setStatus('Pronto.');
-</script>
+  </script>
 </body>
 </html>
