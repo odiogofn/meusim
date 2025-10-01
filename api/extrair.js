@@ -1,69 +1,58 @@
-import * as cheerio from "cheerio";
 import fetch from "node-fetch";
+import * as cheerio from "cheerio";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-// 🔹 Função para normalizar células
-function normalizarTexto(txt) {
-  if (!txt) return null;
-  const limpado = txt.replace(/\s+/g, " ").trim();
-  return limpado === "" ? null : limpado;
-}
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Service role, pq grava no banco
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Método não permitido" });
+  }
+
   try {
-    const { cod_tce, municipio } = req.query;
-    if (!cod_tce) {
-      return res.status(400).json({ error: "Faltou o código do TCE" });
-    }
+    const { data: clientes, error: errorClientes } = await supabase
+      .from("clientes")
+      .select("id, municipio, cod_tce")
+      .eq("ativo", "sim");
 
-    // 🔹 Faz o request ao site do TCE
-    const response = await fetch(
-      `https://www.tce.someapi.gov.br/consulta?cod=${cod_tce}`
-    );
-    if (!response.ok) {
-      throw new Error(`Erro ao acessar TCE: ${response.status}`);
-    }
+    if (errorClientes) throw errorClientes;
 
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const linhas = [];
+    for (let i = 0; i < clientes.length; i++) {
+      const cliente = clientes[i];
+      const url = `https://www.tce.someapi.gov.br/consulta?cod=${cliente.cod_tce}`;
+      const response = await fetch(url);
 
-    // 🔹 Percorre cada linha da tabela
-    $("table tr").each((i, el) => {
-      const cols = $(el).find("td");
-      if (cols.length >= 4) {
-        const mes = normalizarTexto($(cols[0]).text());
-        const municipioExtraido = normalizarTexto($(cols[1]).text());
-        const orgao = normalizarTexto($(cols[2]).text());
-        const data = normalizarTexto($(cols[3]).text());
+      if (!response.ok) throw new Error(`Falha ao acessar ${url}`);
 
-        linhas.push({
-          mes,
-          municipio: municipioExtraido || municipio, // se não tiver na tabela, usa o passado
-          orgao,
-          data,
-          cod_tce,
+      const html = await response.text();
+      const $ = cheerio.load(html);
+
+      // Exemplo: pegar as células da tabela
+      const linhas = [];
+      $("table tr").each((_, el) => {
+        const cols = $(el).find("td").map((_, td) => $(td).text().trim()).get();
+        if (cols.length) linhas.push(cols);
+      });
+
+      // Salva cada linha no Supabase
+      for (const linha of linhas) {
+        await supabase.from("consultas").insert({
+          mes: linha[0] || null,
+          municipio: cliente.municipio,
+          orgao: linha[1] || null,
+          data: linha[2] || null,
         });
       }
-    });
 
-    // 🔹 Salva no Supabase
-    if (linhas.length > 0) {
-      const { error } = await supabase.from("consultas").insert(linhas);
-      if (error) {
-        console.error("Erro ao salvar:", error);
-        return res.status(500).json({ error: "Erro ao salvar no Supabase" });
-      }
+      // delay 2s entre cada município
+      await new Promise((r) => setTimeout(r, 2000));
     }
 
-    return res.status(200).json({ ok: true, registros: linhas.length });
-  } catch (err) {
-    console.error("Erro extrair:", err);
-    return res.status(500).json({ error: err.message });
+    res.json({ message: "Extração concluída com sucesso" });
+  } catch (error) {
+    console.error("Erro na extração:", error);
+    res.status(500).json({ error: error.message });
   }
 }
