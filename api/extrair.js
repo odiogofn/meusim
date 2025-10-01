@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   try {
     const { ano } = req.body;
 
-    // busca clientes ativos
+    // Buscar clientes ativos
     const { data: clientes, error } = await supabase
       .from("clientes")
       .select("cod_tce, entidade")
@@ -28,7 +28,6 @@ export default async function handler(req, res) {
 
     const resultados = [];
 
-    // processar sequencialmente com delay de 2s
     for (let i = 0; i < clientes.length; i++) {
       const cliente = clientes[i];
       const url = `https://municipios-transparencia.tce.ce.gov.br/index.php/municipios/prestacao/mun/${cliente.cod_tce}/versao/1/${ano}`;
@@ -55,8 +54,7 @@ export default async function handler(req, res) {
         }
       });
 
-      // respeitar limite de 2s
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 2000)); // respeitar limite
     }
 
     // salvar no supabase
@@ -64,7 +62,6 @@ export default async function handler(req, res) {
       const { error: insertError } = await supabase
         .from("consultas")
         .insert(resultados);
-
       if (insertError) throw insertError;
     }
 
