@@ -3,7 +3,7 @@ import * as cheerio from "cheerio";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Service role, pq grava no banco
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req, res) {
@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   try {
     const { data: clientes, error: errorClientes } = await supabase
       .from("clientes")
-      .select("id, municipio, cod_tce")
+      .select("id, entidade, cod_tce")  // entidade no lugar de municipio
       .eq("ativo", "sim");
 
     if (errorClientes) throw errorClientes;
@@ -29,24 +29,23 @@ export default async function handler(req, res) {
       const html = await response.text();
       const $ = cheerio.load(html);
 
-      // Exemplo: pegar as células da tabela
       const linhas = [];
       $("table tr").each((_, el) => {
         const cols = $(el).find("td").map((_, td) => $(td).text().trim()).get();
         if (cols.length) linhas.push(cols);
       });
 
-      // Salva cada linha no Supabase
       for (const linha of linhas) {
         await supabase.from("consultas").insert({
           mes: linha[0] || null,
-          municipio: cliente.municipio,
+          entidade: cliente.entidade,   // salva o nome do município certo
           orgao: linha[1] || null,
           data: linha[2] || null,
         });
       }
 
-      // delay 2s entre cada município
+      console.log(`✅ Salvo ${cliente.entidade} (${i + 1}/${clientes.length})`);
+
       await new Promise((r) => setTimeout(r, 2000));
     }
 
