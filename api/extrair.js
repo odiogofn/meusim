@@ -21,7 +21,8 @@ export default async function handler(req, res) {
 
     for (let i = 0; i < clientes.length; i++) {
       const cliente = clientes[i];
-      const url = `https://municipios-transparencia.tce.ce.gov.br/index.php/municipios/prestacao/mun/cod_tce/versao/ano`;
+      const url = `const url = `https://municipios-transparencia.tce.ce.gov.br/index.php/municipios/prestacao/mun/${cliente.cod_tce}/versao/1/${ano}`;
+`;
       const response = await fetch(url);
 
       if (!response.ok) throw new Error(`Falha ao acessar ${url}`);
